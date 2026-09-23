@@ -398,8 +398,6 @@ let db = null;
 let cloudStarted = false;
 let cloudStarting = false;
 let cloudState = { status:'unset', message:'' };
-let bootLocal = { players:[], matches:[] };
-let gotPlayers = false, gotMatches = false, cloudWasEmpty = false;
 
 function loadFbConfig(){
   try{ const c = JSON.parse(localStorage.getItem(FBCFG_KEY)); if(c && c.projectId) return c; }catch(e){}
@@ -407,7 +405,6 @@ function loadFbConfig(){
 }
 function cloudConfigured(){ return !!fbConfig; }
 function fsReady(){ return !!db; }
-function cloneLocal(){ return { players: JSON.parse(JSON.stringify(data.players||[])), matches: JSON.parse(JSON.stringify(data.matches||[])) }; }
 
 function parseFbConfig(text){
   let s = String(text||'').trim();
@@ -466,18 +463,14 @@ async function initCloud(){
     firebase.initializeApp(fbConfig);
     db = firebase.firestore();
     cloudStarted = true;
-    bootLocal = cloneLocal();
-    gotPlayers = gotMatches = cloudWasEmpty = false;
 
     db.collection('players').onSnapshot(snap=>{
       data.players = snap.docs.map(d=>d.data());
-      if(!gotPlayers){ gotPlayers = true; if(snap.size===0 && bootLocal.players.length){ cloudWasEmpty = true; data.players = bootLocal.players; } }
       afterSnapshot();
     }, err=>cloudFail(err));
 
     db.collection('matches').onSnapshot(snap=>{
       data.matches = snap.docs.map(d=>d.data());
-      if(!gotMatches){ gotMatches = true; if(snap.size===0 && bootLocal.matches.length){ cloudWasEmpty = true; data.matches = bootLocal.matches; } }
       afterSnapshot();
     }, err=>cloudFail(err));
   }catch(e){
@@ -488,8 +481,7 @@ async function initCloud(){
 }
 function afterSnapshot(){
   localStorage.setItem(KEY, JSON.stringify(data));
-  if(cloudWasEmpty) cloudState = { status:'local', message:'La nube está vacía. Subí los datos de este dispositivo.' };
-  else if(cloudState.status !== 'error') cloudState = { status:'ok', message:'Sincronizado en tiempo real.' };
+  if(cloudState.status !== 'error') cloudState = { status:'ok', message:'Sincronizado en tiempo real.' };
   render();
 }
 
@@ -498,22 +490,6 @@ function removePlayerDoc(id){ if(fsReady()) db.collection('players').doc(id).del
 function persistMatch(m){ if(fsReady()) db.collection('matches').doc(m.id).set(m).catch(e=>cloudFail(e)); }
 function removeMatchDoc(id){ if(fsReady()) db.collection('matches').doc(id).delete().catch(e=>cloudFail(e)); }
 function cloudFail(e){ cloudState = { status:'error', message:'Error: ' + (e && e.message ? e.message : e) }; renderCloudStatus(); }
-
-async function seedCloud(){
-  if(!fsReady()){ alert('Primero configurá Firebase.'); return; }
-  if(!(data.players.length || data.matches.length)){ alert('No hay datos en este dispositivo para subir.'); return; }
-  if(!confirm('¿Subir los datos de este dispositivo a la nube? Se agregan a lo que ya haya.')) return;
-  cloudState = { status:'syncing', message:'Subiendo datos...' }; renderCloudStatus();
-  try{
-    const batch = db.batch();
-    data.players.forEach(p=> batch.set(db.collection('players').doc(p.id), p, {merge:true}));
-    data.matches.forEach(m=> batch.set(db.collection('matches').doc(m.id), m, {merge:true}));
-    await batch.commit();
-    cloudWasEmpty = false;
-    cloudState = { status:'ok', message:'Datos subidos. Todo el equipo ya los ve.' };
-  }catch(e){ cloudState = { status:'error', message:'Error al subir: ' + e.message }; }
-  renderCloudStatus();
-}
 
 function cloudStatusHTML(){
   const map = {
@@ -1045,13 +1021,10 @@ function jugadoresHTML(){
       <div id="cloud-status">${cloudStatusHTML()}</div>
       ${cloudConfigured()
         ? `<div class="toolbar">
-             ${cloudState.status==='local' || !cloudState.status
-                ? `<button class="btn primary sm" data-action="cloud-seed">Subir datos de este dispositivo</button>`
-                : ''}
              <button class="btn ghost sm" data-action="cloud-help">Ayuda</button>
              <button class="btn danger sm" data-action="cloud-change">Cambiar config</button>
            </div>
-           <p class="muted" style="margin-top:10px">Todo lo que cargues se guarda en la nube y el equipo lo ve al instante.</p>`
+           <p class="muted" style="margin-top:10px">Todo lo que cargues se guarda en la nube y el equipo lo ve al instante. La nube es la fuente de verdad.</p>`
         : `<p class="muted">Conectá la base de datos para que los datos los vea y cargue todo el equipo.</p>
            <button class="btn ghost block" data-action="cloud-help" style="margin-bottom:12px">¿Cómo conecto?</button>
            <label>Pegá acá tu <b>firebaseConfig</b>
@@ -1438,7 +1411,6 @@ document.addEventListener('click', e=>{
     case 'reset': resetData(); break;
     case 'cloud-save-config': saveFbConfig(); break;
     case 'cloud-change': changeFbConfig(); break;
-    case 'cloud-seed': seedCloud(); break;
     case 'cloud-help': openCloudHelp(); break;
     case 'toggle-sfx': toggleSfx(); break;
     case 'toggle-music': toggleHimno(); break;
