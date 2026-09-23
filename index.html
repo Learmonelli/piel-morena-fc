@@ -342,14 +342,14 @@ function shade(hex, f){
   return '#' + ((1<<24) + (r<<16) + (g<<8) + b).toString(16).slice(1);
 }
 const AV_SKIN  = ['#f1c9a5','#e8b98f','#dda96f','#c68642','#a9713f','#8d5524','#7a4a22'];
-const AV_HAIR  = ['#161616','#2e2119','#4a2f1b','#5b3a1e','#2b1d12'];
+const AV_HAIR  = ['#161616','#2e2119','#4a2f1b','#8a5a2b','#d9a441','#e8c874','#b5481f','#7a2f18'];
 const AV_SHIRT = ['#7d2233','#f2b705','#6a2c91','#8bc34a','#f3ead6','#b5703c','#1f9bd1','#e5484d'];
 function randomFace(){
   return {
     skin: Math.floor(Math.random()*AV_SKIN.length),
     hair: Math.floor(Math.random()*AV_HAIR.length),
     shirt: Math.floor(Math.random()*AV_SHIRT.length),
-    style: Math.floor(Math.random()*3),
+    style: Math.floor(Math.random()*4),
     beard: Math.random() < 0.35
   };
 }
@@ -362,7 +362,7 @@ function avatarSVG(seed, size, face){
   const SKIN  = AV_SKIN[f.skin  != null ? f.skin  : (h >>> 3)  % AV_SKIN.length];
   const HAIR  = AV_HAIR[f.hair  != null ? f.hair  : (h >>> 7)  % AV_HAIR.length];
   const SHIRT = AV_SHIRT[f.shirt != null ? f.shirt : (h >>> 11) % AV_SHIRT.length];
-  const style = f.style != null ? f.style : (h >>> 15) % 3;
+  const style = f.style != null ? f.style : (h >>> 15) % 4;
   const beard = f.beard != null ? f.beard : ((h >>> 17) & 1) === 1;
   const shirtRGB = (parseInt(SHIRT.slice(1,3),16)+parseInt(SHIRT.slice(3,5),16)+parseInt(SHIRT.slice(5,7),16));
   const K = shirtRGB > 560 ? '#7d2233' : '#f3ead6';
@@ -371,26 +371,30 @@ function avatarSVG(seed, size, face){
   const inE = (x,y,rx,ry) => (((x-CX)/rx)**2 + ((y-CY)/ry)**2) <= 1;
 
   // pelo con volumen (arriba, un poco mas ancho)
-  for(let y=0;y<N;y++) for(let x=0;x<N;x++)
-    if(y <= 6 && inE(x,y,RX+1,RY+1)) g[y][x] = 'H';
+  if(style !== 3){
+    for(let y=0;y<N;y++) for(let x=0;x<N;x++)
+      if(y <= 6 && inE(x,y,RX+1,RY+1)) g[y][x] = 'H';
+  }
 
   // cara con sombreado lateral
   for(let y=0;y<N;y++) for(let x=0;x<N;x++)
     if(inE(x,y,RX,RY)) g[y][x] = x >= 10 ? 'd' : (x <= 4 ? 'L' : 'S');
 
-  // linea de pelo segun estilo (corto / medio / largo)
-  const hairline = [5,6,6][style];
-  for(let y=0;y<N;y++) for(let x=0;x<N;x++)
-    if(g[y][x] !== '.' && g[y][x] !== 'H' && y <= hairline) g[y][x] = 'H';
+  if(style !== 3){
+    // linea de pelo segun estilo (corto / medio / largo)
+    const hairline = [5,6,6][style];
+    for(let y=0;y<N;y++) for(let x=0;x<N;x++)
+      if(g[y][x] !== '.' && g[y][x] !== 'H' && y <= hairline) g[y][x] = 'H';
 
-  // pelo a los costados segun el largo
-  const sideBottom = [7,9,11][style];
-  for(let y=5;y<=sideBottom;y++){ g[y][2] = 'H'; g[y][13] = 'H'; }
-  g[6][3] = 'H'; g[6][12] = 'H';
+    // pelo a los costados segun el largo
+    const sideBottom = [7,9,11][style];
+    for(let y=5;y<=sideBottom;y++){ g[y][2] = 'H'; g[y][13] = 'H'; }
+    g[6][3] = 'H'; g[6][12] = 'H';
 
-  // brillo en la punta del pelo
-  for(let y=0;y<N;y++) for(let x=0;x<N;x++)
-    if(g[y][x] === 'H' && (!g[y-1] || g[y-1][x] === '.')) g[y][x] = 'l';
+    // brillo en la punta del pelo
+    for(let y=0;y<N;y++) for(let x=0;x<N;x++)
+      if(g[y][x] === 'H' && (!g[y-1] || g[y-1][x] === '.')) g[y][x] = 'l';
+  }
 
   // rasgos
   g[6][4] = 'B'; g[6][5] = 'B'; g[6][10] = 'B'; g[6][11] = 'B';   // cejas
@@ -690,7 +694,7 @@ function jugadoresHTML(){
           <div class="face-row"><span class="face-lbl">Pelo</span>${AV_HAIR.map((c,i)=>swatch('hair',i,c)).join('')}</div>
           <div class="face-row"><span class="face-lbl">Camiseta</span>${AV_SHIRT.map((c,i)=>swatch('shirt',i,c)).join('')}</div>
           <div class="face-row"><span class="face-lbl">Corte</span>
-            ${[['Corto',0],['Medio',1],['Largo',2]].map(([l,v])=>`<button type="button" class="face-pill ${newFace.style===v?'on':''}" data-action="face-set" data-key="style" data-val="${v}">${l}</button>`).join('')}
+            ${[['Corto',0],['Medio',1],['Largo',2],['Pelado',3]].map(([l,v])=>`<button type="button" class="face-pill ${newFace.style===v?'on':''}" data-action="face-set" data-key="style" data-val="${v}">${l}</button>`).join('')}
             <button type="button" class="face-pill ${newFace.beard?'on':''}" data-action="face-set" data-key="beard" data-val="1">Barba</button>
           </div>
         </div>
