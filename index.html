@@ -367,7 +367,7 @@
       </svg>
       <div>
         <h1>Piel Morena FC</h1>
-        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v23</span></p>
+        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v24</span></p>
       </div>
     </div>
     <div class="header-btns">
@@ -441,14 +441,6 @@ function saveFbConfig(){
     initCloud(); render();
   }catch(e){ alert('No pude leer la config: ' + e.message); }
 }
-function changeFbConfig(){
-  if(!confirm('¿Cambiar la configuración de Firebase?')) return;
-  localStorage.removeItem(FBCFG_KEY);
-  fbConfig = DEFAULT_FB_CONFIG; db = null; cloudStarted = false;
-  cloudState = { status:'unset', message:'' };
-  initCloud(); render();
-}
-
 function loadScript(src){
   return new Promise((res, rej)=>{
     const s = document.createElement('script');
@@ -1123,7 +1115,6 @@ function jugadoresHTML(){
       ${cloudConfigured()
         ? `<div class="toolbar">
              <button class="btn ghost sm" data-action="cloud-help">Ayuda</button>
-             <button class="btn danger sm" data-action="cloud-change">Cambiar config</button>
            </div>
            <p class="muted" style="margin-top:10px">Todo lo que cargues se guarda en la nube y el equipo lo ve al instante. La nube es la fuente de verdad.</p>`
         : `<p class="muted">Conectá la base de datos para que los datos los vea y cargue todo el equipo.</p>
@@ -1564,7 +1555,6 @@ document.addEventListener('click', e=>{
     case 'import': importData(); break;
     case 'reset': resetData(); break;
     case 'cloud-save-config': saveFbConfig(); break;
-    case 'cloud-change': changeFbConfig(); break;
     case 'cloud-help': openCloudHelp(); break;
     case 'toggle-sfx': toggleSfx(); break;
     case 'toggle-music': toggleHimno(); break;
