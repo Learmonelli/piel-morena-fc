@@ -206,6 +206,15 @@
   .comment-time{font-size:11px;color:var(--muted);flex:1}
   .comment-head .icon-btn{margin-left:auto}
   .comment-text{margin:4px 0 0;font-size:15px;word-break:break-word;white-space:pre-wrap}
+
+  /* Ayuda */
+  details.help{border-bottom:1px solid rgba(74,33,48,.55);padding:9px 0}
+  details.help:last-child{border-bottom:0}
+  details.help summary{cursor:pointer;font-weight:700;font-size:15px;list-style:none}
+  details.help summary::-webkit-details-marker{display:none}
+  details.help summary::before{content:"\25B8  ";color:var(--gold)}
+  details.help[open] summary::before{content:"\25BE  "}
+  details.help p{margin:6px 0 0;font-size:14px;line-height:1.5}
   .clickable{cursor:pointer}
   .win{color:#bfe08a}
   .loss{color:#ff9a9d}
@@ -1041,6 +1050,26 @@ function jugadoresHTML(){
         <button class="btn ghost sm" data-action="import">Importar</button>
         <button class="btn danger sm" data-action="reset">Borrar todo</button>
       </div>
+    </div>
+
+    <div class="card">
+      <h3>Ayuda</h3>
+      <details class="help" open><summary>Crear un jugador</summary>
+        <p class="muted">En <b>Jugadores</b> completá nombre, apodo, dorsal y posición. Elegí la cara (piel, pelo, corte, camiseta o "Aleatorio") y tocá <b>Agregar al plantel</b>.</p></details>
+      <details class="help"><summary>Crear un partido</summary>
+        <p class="muted">En <b>Partidos</b> tocá <b>+ Nuevo partido</b>, poné la fecha y elegí <b>Interno</b> (7 vs 7 entre nosotros) o <b>Contra un rival</b>.</p></details>
+      <details class="help"><summary>Cargar goles y resultado</summary>
+        <p class="muted">Abrí el partido. En <b>Armar los equipos</b> tocá A o B para asignar a cada uno. Después usá <b>+ Gol</b> (elegís goleador y asistencia). El marcador se calcula solo.</p></details>
+      <details class="help"><summary>Figura del partido</summary>
+        <p class="muted">Dentro del partido, en <b>Figura del partido</b> elegí de la lista. Después se cuenta en el ranking y en la ficha.</p></details>
+      <details class="help"><summary>Post-partido: escabio y comentarios</summary>
+        <p class="muted">En <b>Partidos</b>, abajo, elegí el partido en el selector. Cargá el <b>Escabio</b> con − / + y dejá <b>Comentarios</b> con tu nombre.</p></details>
+      <details class="help"><summary>Ranking y estadísticas</summary>
+        <p class="muted">En <b>Estadísticas</b> tenés el ranking con podio (tocá las categorías: goles, asistencias, figuras, partidos jugados, victorias, derrotas, escabio) y la tabla completa.</p></details>
+      <details class="help"><summary>Ficha de cada jugador</summary>
+        <p class="muted">Tocá un jugador en <b>Jugadores</b> o <b>Estadísticas</b> para ver su registro y el detalle partido a partido.</p></details>
+      <details class="help"><summary>Datos compartidos (nube)</summary>
+        <p class="muted">Todo se guarda en la nube: lo que carga uno lo ven todos al instante. No hace falta registrarse. Tip: agregá la web a la pantalla de inicio del celu.</p></details>
     </div>
   `;
 }
