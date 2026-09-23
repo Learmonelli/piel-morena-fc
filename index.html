@@ -3,27 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<meta name="theme-color" content="#2b0a14">
+<meta name="theme-color" content="#0c2814">
 <title>Piel Morena FC</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:#2b0a14; --bg2:#3a0f1c; --card:#40121f; --card2:#52182a; --line:#7a2a3c;
-    --txt:#f8efdc; --muted:#d3a99e;
-    --gold:#f2b705; --gold-d:#c88f00;
-    --burgundy:#8a2334; --purple:#6a2c91; --green:#8bc34a; --red:#ff5a5f;
+    --bg:#0c2814; --bg2:#113220; --card:#153a22; --card2:#1d4d2c; --line:#2f6b41;
+    --txt:#eafff0; --muted:#9fd3ac;
+    --gold:#ffd23f; --gold-d:#d9a400;
+    --burgundy:#8a2334; --purple:#8a4fbf; --green:#5fd35f; --red:#ff5a5f;
     --skin:#b5703c; --cream:#f3ead6;
+    --font-body:'VT323',ui-monospace,Consolas,monospace;
+    --font-pixel:'Press Start 2P',ui-monospace,Consolas,monospace;
   }
   *{box-sizing:border-box}
   html,body{margin:0;padding:0}
   body{
-    background:radial-gradient(1200px 600px at 50% -200px,#7a1a2e 0%,var(--bg) 58%) fixed;
+    background:radial-gradient(1200px 600px at 50% -200px,#1c5a33 0%,var(--bg) 60%) fixed;
     color:var(--txt);
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     -webkit-font-smoothing:antialiased;
     padding-bottom:96px;
     min-height:100vh;
   }
-  .app{max-width:720px;margin:0 auto;padding:0 16px}
+  .app{max-width:720px;margin:0 auto;padding:0 16px;position:relative;z-index:1}
+
+  /* Canchita 8-bit de fondo */
+  #pitch-bg{position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:.38}
+  #pitch-bg svg{width:100%;height:100%;display:block}
+  #pitch-bg::after{content:"";position:absolute;inset:0;
+    background:radial-gradient(120% 80% at 50% 0%,transparent 30%,rgba(21,10,14,.55) 100%)}
 
   /* Header */
   .app-header{padding:22px 0 14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
@@ -124,6 +135,46 @@
   .table th.c,.table td.c{text-align:center;width:44px}
   .table tr:first-child td .rk{color:var(--gold)}
   .rk{font-weight:800;color:var(--muted);font-size:12px}
+  .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .table-wrap .table{min-width:430px}
+  .clickable{cursor:pointer}
+  .win{color:#bfe08a}
+  .loss{color:#ff9a9d}
+  .gold{color:var(--gold)}
+  .pill{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;
+    background:var(--card2);color:var(--muted);white-space:nowrap}
+  .pill.win{background:rgba(139,195,74,.18);color:#bfe08a}
+  .pill.loss{background:rgba(255,90,95,.16);color:#ff9a9d}
+  .pill.gold{background:rgba(242,183,5,.16);color:var(--gold)}
+
+  /* Resumen ganador/perdedor */
+  .summary{display:flex;gap:12px}
+  .summary .sum-item{flex:1;display:flex;flex-direction:column;gap:7px;min-width:0}
+  .summary .sum-item+.sum-item{border-left:1px solid var(--line);padding-left:12px}
+  .sum-item .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:700}
+  .sum-item .val{display:flex;align-items:center;gap:8px;font-size:13px;min-width:0}
+  .sum-item .val b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  /* Ficha de jugador */
+  .profile-top{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+  .profile-top h2{margin:0;font-size:20px}
+  .profile-top p{margin:3px 0 0;font-size:12px}
+  .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+  .tile{background:#320d18;border:1px solid var(--line);border-radius:12px;padding:10px 4px;text-align:center}
+  .tile-num{display:block;font-size:20px;font-weight:800;line-height:1.15}
+  .tile-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);font-weight:700}
+  .log-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid rgba(74,33,48,.55)}
+  .log-row:last-child{border-bottom:0}
+  .res{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;flex:0 0 auto;font-size:12px;font-weight:800}
+  .res.win{background:rgba(139,195,74,.2);color:#bfe08a}
+  .res.loss{background:rgba(255,90,95,.18);color:#ff9a9d}
+  .res.draw{background:var(--card2);color:var(--muted)}
+  .log-info{flex:1;display:flex;flex-direction:column;gap:2px;min-width:0}
+  .log-date{font-size:11px;color:var(--muted);font-weight:600}
+  .log-vs{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .log-info .tag.mvp{align-self:flex-start;margin-top:2px}
+  .log-score{font-weight:800;font-size:15px}
+  .log-contrib{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end;max-width:84px}
 
   .muted{color:var(--muted);font-size:13px}
   .empty{text-align:center;color:var(--muted);padding:36px 16px;font-size:14px}
@@ -139,9 +190,73 @@
   .modal-actions{display:flex;gap:10px;margin-top:6px}
   .modal-actions .btn{flex:1}
   @media (min-width:520px){.overlay{align-items:center}}
+
+  /* ===== Tema Cancha arcade ===== */
+  body{font-family:var(--font-body);font-size:19px;letter-spacing:.3px}
+  .brand h1{font-family:var(--font-pixel);font-size:12px;line-height:1.75;letter-spacing:0}
+  .brand p{font-size:16px;font-family:var(--font-body)}
+  h2,h3{font-family:var(--font-pixel);font-size:10px;line-height:1.7;letter-spacing:.5px}
+  .section-head h2{font-size:10px}
+  .tabs{border:3px solid #06200f;border-radius:12px;padding:6px}
+  .tabs button{font-family:var(--font-pixel);font-size:8px;line-height:1.6;padding:12px 4px;letter-spacing:0}
+  .card{border:3px solid #06200f;border-radius:12px;box-shadow:6px 6px 0 rgba(0,0,0,.42)}
+  .btn{border-radius:8px;font-family:var(--font-body);font-size:19px;letter-spacing:.5px;
+    text-transform:uppercase}
+  .btn.primary{box-shadow:3px 3px 0 rgba(0,0,0,.5)}
+  .btn.ghost{border:2px solid var(--line);box-shadow:3px 3px 0 rgba(0,0,0,.3)}
+  .btn.danger{border:2px solid #5a2028;box-shadow:3px 3px 0 rgba(0,0,0,.3)}
+  .sidebtn{border:2px solid var(--line);font-family:var(--font-body);font-size:15px}
+  .sidebtn.on{box-shadow:2px 2px 0 rgba(0,0,0,.5)}
+  input,select{border:2px solid #06200f;border-radius:8px;font-family:var(--font-body);font-size:19px}
+  .muted{font-size:15px}
+  .date{font-size:14px}
+  .match-title{font-size:18px}
+  .score{font-size:38px}
+  .board .team .go{font-size:48px}
+  .board .team .nm{font-size:15px}
+  .assign-row .pname{font-size:17px}
+  .goal-main{font-size:17px}
+  .goal-main .as{font-size:13px}
+  .table{font-size:16px}
+  .table th{font-size:11px}
+  .tile-num{font-size:24px}
+  .log-score{font-size:18px}
+  .log-vs{font-size:16px}
+  .log-date{font-size:13px}
+  .music-btn{font-family:var(--font-body);font-size:17px;text-transform:uppercase}
+  .num{font-size:13px;height:24px}
+  .empty{font-size:17px}
 </style>
 </head>
 <body>
+<div id="pitch-bg" aria-hidden="true">
+  <svg viewBox="0 0 240 360" preserveAspectRatio="xMidYMid slice" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg">
+    <rect width="240" height="360" fill="#17622f"/>
+    <g fill="#1d7a3c">
+      <rect x="0" y="0" width="30" height="360"/>
+      <rect x="60" y="0" width="30" height="360"/>
+      <rect x="120" y="0" width="30" height="360"/>
+      <rect x="180" y="0" width="30" height="360"/>
+    </g>
+    <g fill="#f3ead6" stroke="#f3ead6" stroke-width="4" shape-rendering="crispEdges">
+      <rect x="8" y="8" width="224" height="4" stroke="none"/>
+      <rect x="8" y="348" width="224" height="4" stroke="none"/>
+      <rect x="8" y="8" width="4" height="344" stroke="none"/>
+      <rect x="228" y="8" width="4" height="344" stroke="none"/>
+      <rect x="8" y="178" width="224" height="4" stroke="none"/>
+      <circle cx="120" cy="180" r="42" fill="none"/>
+      <rect x="116" y="176" width="8" height="8" stroke="none"/>
+      <rect x="60" y="8" width="120" height="58" fill="none"/>
+      <rect x="90" y="8" width="60" height="24" fill="none"/>
+      <rect x="60" y="294" width="120" height="58" fill="none"/>
+      <rect x="90" y="328" width="60" height="24" fill="none"/>
+      <path d="M8 8 h44 M8 8 v24" fill="none"/>
+      <path d="M232 8 h-44 M232 8 v24" fill="none"/>
+      <path d="M8 352 h44 M8 352 v-24" fill="none"/>
+      <path d="M232 352 h-44 M232 352 v-24" fill="none"/>
+    </g>
+  </svg>
+</div>
 <div class="app">
   <header class="app-header">
     <div class="brand">
@@ -180,6 +295,8 @@ const KEY = 'pielmorenafc_v1';
 let data = load();
 let view = 'partidos';
 let currentMatchId = null;
+let currentPlayerId = null;
+let playerBackView = 'jugadores';
 
 function load(){
   try{
@@ -238,7 +355,8 @@ function avatarSVG(seed, size){
 function render(){
   $('#tabs').innerHTML = [['partidos','Partidos'],['estadisticas','Estadísticas'],['jugadores','Jugadores']]
     .map(([k,l])=>`<button data-action="tab" data-view="${k}" class="${view===k?'active':''}">${l}</button>`).join('');
-  $('#app').innerHTML = view==='jugadores' ? jugadoresHTML()
+  $('#app').innerHTML = view==='jugador' ? playerDetailHTML()
+    : view==='jugadores' ? jugadoresHTML()
     : view==='estadisticas' ? statsHTML()
     : (currentMatchId ? matchDetailHTML() : partidosHTML());
 }
@@ -339,9 +457,13 @@ function matchDetailHTML(){
 /* ---------- Estadísticas ---------- */
 function computeStats(){
   const st = {};
-  data.players.forEach(p=> st[p.id]={pj:0,goles:0,asist:0,mvp:0});
+  data.players.forEach(p=> st[p.id]={pj:0,goles:0,asist:0,mvp:0,v:0,d:0,e:0});
   data.matches.forEach(m=>{
-    new Set([...(m.teamA||[]),...(m.teamB||[])]).forEach(id=>{ if(st[id]) st[id].pj++; });
+    const a = scoreOf(m,'A'), b = scoreOf(m,'B');
+    const resA = a>b ? 'v' : a<b ? 'd' : 'e';
+    const resB = b>a ? 'v' : b<a ? 'd' : 'e';
+    (m.teamA||[]).forEach(id=>{ if(st[id]){ st[id].pj++; st[id][resA]++; } });
+    (m.teamB||[]).forEach(id=>{ if(st[id]){ st[id].pj++; st[id][resB]++; } });
     (m.events||[]).forEach(ev=>{
       if(ev.scorerId && st[ev.scorerId]) st[ev.scorerId].goles++;
       if(ev.assistId && st[ev.assistId]) st[ev.assistId].asist++;
@@ -354,29 +476,89 @@ function statsHTML(){
   const st = computeStats();
   const rows = data.players.map(p=>({p, s:st[p.id]}))
     .filter(r=> r.s.pj || r.s.goles || r.s.asist || r.s.mvp)
-    .sort((x,y)=> y.s.goles-x.s.goles || y.s.asist-x.s.asist || y.s.mvp-x.s.mvp || x.p.name.localeCompare(y.p.name));
+    .sort((x,y)=> y.s.goles-x.s.goles || y.s.asist-x.s.asist || y.s.v-x.s.v || x.p.name.localeCompare(y.p.name));
   const head = `<div class="section-head"><h2>Estadísticas</h2></div>`;
   if(!rows.length){
     return head + `<div class="empty"><span class="big">📊</span>Todavía no hay datos.<br>Cargá un partido y empezá a sumar.</div>`;
   }
+  const topWin = rows.filter(r=>r.s.v>0).sort((x,y)=>y.s.v-x.s.v)[0];
+  const topLoss = rows.filter(r=>r.s.d>0).sort((x,y)=>y.s.d-x.s.d)[0];
+  const summary = `<div class="card summary">
+    <div class="sum-item"><span class="lbl">Más ganó</span>
+      <span class="val">${topWin?`${avatarSVG(topWin.p.id,26)}<b>${esc(pname(topWin.p.id))}</b><span class="pill win">${topWin.s.v} V</span>`:'<span class="muted">—</span>'}</span></div>
+    <div class="sum-item"><span class="lbl">Más perdió</span>
+      <span class="val">${topLoss?`${avatarSVG(topLoss.p.id,26)}<b>${esc(pname(topLoss.p.id))}</b><span class="pill loss">${topLoss.s.d} D</span>`:'<span class="muted">—</span>'}</span></div>
+  </div>`;
   const body = rows.map((r,i)=>`<tr>
     <td class="c"><span class="rk">${i+1}</span></td>
-    <td><span class="pname">${avatarSVG(r.p.id,26)}${r.p.number?`<span class="num">${esc(r.p.number)}</span>`:''}${esc(r.p.name)}</span></td>
+    <td class="clickable" data-action="open-player" data-id="${r.p.id}"><span class="pname">${avatarSVG(r.p.id,26)}${r.p.number?`<span class="num">${esc(r.p.number)}</span>`:''}${esc(r.p.name)}</span></td>
     <td class="c">${r.s.pj}</td>
     <td class="c"><b>${r.s.goles}</b></td>
     <td class="c">${r.s.asist}</td>
+    <td class="c win">${r.s.v||''}</td>
+    <td class="c loss">${r.s.d||''}</td>
     <td class="c">${r.s.mvp||''}</td>
   </tr>`).join('');
-  return head + `<div class="card"><table class="table">
-    <thead><tr><th class="c">#</th><th>Jugador</th><th class="c">PJ</th><th class="c">G</th><th class="c">A</th><th class="c">MVP</th></tr></thead>
+  return head + summary + `<div class="card"><div class="table-wrap"><table class="table">
+    <thead><tr><th class="c">#</th><th>Jugador</th><th class="c">PJ</th><th class="c">G</th><th class="c">A</th><th class="c">V</th><th class="c">D</th><th class="c">MVP</th></tr></thead>
     <tbody>${body}</tbody>
-  </table></div>
-  <p class="muted" style="text-align:center">PJ: partidos jugados · G: goles · A: asistencias · MVP: figura del partido</p>`;
+  </table></div></div>
+  <p class="muted" style="text-align:center">PJ: jugados · G: goles · A: asistencias · V: ganados · D: perdidos · MVP: figura</p>`;
+}
+
+/* ---------- Ficha de jugador ---------- */
+function playerDetailHTML(){
+  const p = getPlayer(currentPlayerId);
+  if(!p){ currentPlayerId=null; view=playerBackView; return view==='estadisticas'?statsHTML():jugadoresHTML(); }
+  const s = computeStats()[p.id] || {pj:0,goles:0,asist:0,mvp:0,v:0,d:0,e:0};
+  const played = data.matches
+    .filter(m=>(m.teamA||[]).includes(p.id) || (m.teamB||[]).includes(p.id))
+    .sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+
+  const tiles = [['PJ',s.pj,''],['V',s.v,'win'],['E',s.e,''],['D',s.d,'loss'],
+                 ['Goles',s.goles,''],['Asist.',s.asist,''],['Figura',s.mvp,'gold']]
+    .map(([l,v,c])=>`<div class="tile"><span class="tile-num ${c}">${v}</span><span class="tile-lbl">${l}</span></div>`).join('');
+
+  const log = played.length ? played.map(m=>{
+    const side = (m.teamA||[]).includes(p.id) ? 'A' : 'B';
+    const a = scoreOf(m,'A'), b = scoreOf(m,'B');
+    const my = side==='A'?a:b, opp = side==='A'?b:a;
+    const res = my>opp?'G':my<opp?'P':'E';
+    const rc = res==='G'?'win':res==='P'?'loss':'draw';
+    const g = (m.events||[]).filter(ev=> ev.side===side && ev.scorerId===p.id).length;
+    const as = (m.events||[]).filter(ev=> ev.side===side && ev.assistId===p.id).length;
+    const oppName = side==='A' ? m.teamBName : m.teamAName;
+    const mvp = m.mvpId===p.id ? '<span class="tag mvp">Figura</span>' : '';
+    const contrib = `${g?`<span class="pill gold">${g} G</span>`:''}${as?`<span class="pill">${as} A</span>`:''}`;
+    return `<div class="log-row">
+      <span class="res ${rc}">${res}</span>
+      <div class="log-info"><span class="log-date">${fmtDate(m.date)}</span>
+        <span class="log-vs">vs ${esc(oppName)}</span>${mvp}</div>
+      <span class="log-score">${my}-${opp}</span>
+      <span class="log-contrib">${contrib}</span>
+    </div>`;
+  }).join('') : '<p class="muted">Todavía no jugó partidos.</p>';
+
+  return `
+    <button class="btn ghost sm" data-action="player-back" style="margin-bottom:14px">← Volver</button>
+    <div class="card">
+      <div class="profile-top">
+        ${avatarSVG(p.id,72)}
+        <div>
+          <h2>${esc(p.name)}</h2>
+          ${p.nickname?`<p class="muted">"${esc(p.nickname)}"</p>`:''}
+          <p class="muted">${p.number?'Dorsal '+esc(p.number):''}${p.number&&p.position?' · ':''}${p.position?esc(p.position):''}</p>
+        </div>
+      </div>
+      <div class="tiles">${tiles}</div>
+    </div>
+    <div class="card"><h3>Partido a partido</h3>${log}</div>
+  `;
 }
 
 /* ---------- Jugadores ---------- */
 function jugadoresHTML(){
-  const list = data.players.length ? data.players.map(p=>`<div class="assign-row">
+  const list = data.players.length ? data.players.map(p=>`<div class="assign-row clickable" data-action="open-player" data-id="${p.id}">
       <span class="pname">${avatarSVG(p.id,30)}${p.number?`<span class="num">${esc(p.number)}</span>`:''}${esc(p.name)}
         ${p.nickname?`<span class="muted">· ${esc(p.nickname)}</span>`:''}
         ${p.position?`<span class="muted">(${esc(p.position)})</span>`:''}</span>
@@ -597,6 +779,8 @@ document.addEventListener('click', e=>{
     case 'create-match': createMatch(); break;
     case 'add-player': addPlayer(); break;
     case 'del-player': delPlayer(id); break;
+    case 'open-player': playerBackView = view; currentPlayerId = id; view='jugador'; render(); break;
+    case 'player-back': view = playerBackView; currentPlayerId = null; render(); break;
     case 'toggle-team': toggleTeam(id, t.dataset.side); break;
     case 'add-goal': openAddGoal(t.dataset.side); break;
     case 'confirm-goal': confirmGoal(); break;
