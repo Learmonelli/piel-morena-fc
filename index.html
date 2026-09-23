@@ -42,6 +42,8 @@
     border-radius:12px;padding:10px 14px;cursor:pointer;font-family:inherit;
     font-weight:700;font-size:13px;transition:.15s;white-space:nowrap}
   .music-btn.playing{background:linear-gradient(145deg,#ffd23f,var(--gold-d));color:#2a1706;border-color:var(--gold)}
+  .header-btns{display:flex;gap:6px;flex:0 0 auto}
+  .header-btns .music-btn{padding:10px 10px;font-size:12px}
   .brand{display:flex;align-items:center;gap:12px}
   .crest{width:52px;height:58px;flex:0 0 auto;
     filter:drop-shadow(0 6px 14px rgba(0,0,0,.5))}
@@ -332,7 +334,10 @@
         <p>Estadísticas del equipo · 7 vs 7</p>
       </div>
     </div>
-    <button class="music-btn" id="music-btn" data-action="toggle-music">Himno</button>
+    <div class="header-btns">
+      <button class="music-btn" id="music-btn" data-action="toggle-music">Himno</button>
+      <button class="music-btn" id="sfx-btn" data-action="toggle-sfx">Sonido</button>
+    </div>
   </header>
   <nav class="tabs" id="tabs"></nav>
   <main id="app"></main>
@@ -1083,7 +1088,7 @@ function toggleEscabio(pid){
   if(!m.escabio) m.escabio = [];
   const i = m.escabio.indexOf(pid);
   if(i>=0) m.escabio.splice(i,1); else m.escabio.push(pid);
-  save(); persistMatch(m); render();
+  sfx('escabio'); save(); persistMatch(m); render();
 }
 function confirmGoal(){
   const m = data.matches.find(x=>x.id===currentMatchId); if(!m) return;
@@ -1093,7 +1098,7 @@ function confirmGoal(){
   let assistId = assistEl ? (assistEl.value || null) : null;
   if(assistId === scorerId) assistId = null;
   m.events.push({ id: uid(), side, scorerId, assistId });
-  save(); persistMatch(m); closeModal(); render();
+  sfx('goal'); save(); persistMatch(m); closeModal(); render();
 }
 function delGoal(id){
   const m = data.matches.find(x=>x.id===currentMatchId); if(!m) return;
@@ -1102,7 +1107,7 @@ function delGoal(id){
 function deleteMatch(id){
   if(!confirm('¿Eliminar este partido y sus estadísticas?')) return;
   data.matches = data.matches.filter(m=>m.id!==id);
-  currentMatchId=null; save(); removeMatchDoc(id); render();
+  currentMatchId=null; sfx('del'); save(); removeMatchDoc(id); render();
 }
 function addPlayer(){
   const name = $('#p-name').value.trim();
@@ -1116,7 +1121,7 @@ function addPlayer(){
   };
   data.players.push(p);
   newFace = null;
-  save(); persistPlayer(p); render();
+  sfx('add'); save(); persistPlayer(p); render();
 }
 function updateFacePreview(){
   const el = document.getElementById('face-preview');
@@ -1138,7 +1143,7 @@ function delPlayer(id){
     m.events = (m.events||[]).filter(e=> e.scorerId!==id && e.assistId!==id);
     if(m.mvpId===id) m.mvpId=null;
   });
-  save(); removePlayerDoc(id); data.matches.forEach(persistMatch); render();
+  sfx('del'); save(); removePlayerDoc(id); data.matches.forEach(persistMatch); render();
 }
 function exportData(){
   const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
@@ -1183,13 +1188,58 @@ function toggleMusic(){
   }
 }
 
+/* ---------- Efectos 8-bit (Web Audio, originales) ---------- */
+let sfxOn = localStorage.getItem('pmfc_sfx') !== 'off';
+let actx = null;
+function ac(){
+  if(actx) return actx;
+  try{ actx = new (window.AudioContext || window.webkitAudioContext)(); }catch(e){ actx = null; }
+  return actx;
+}
+function tone(freq, start, dur, vol){
+  const c = ac(); if(!c) return;
+  const o = c.createOscillator(), g = c.createGain();
+  o.type = 'square'; o.frequency.value = freq;
+  o.connect(g); g.connect(c.destination);
+  const t = c.currentTime + start;
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(vol || 0.16, t + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.start(t); o.stop(t + dur + 0.02);
+}
+function sfx(name){
+  if(!sfxOn) return;
+  const c = ac(); if(!c) return;
+  if(c.state === 'suspended') c.resume();
+  const S = {
+    goal:    [[523,0,.09],[659,.09,.09],[784,.18,.09],[1047,.27,.22]],
+    mvp:     [[784,0,.08],[988,.08,.08],[1319,.16,.26]],
+    add:     [[659,0,.07],[988,.07,.12]],
+    del:     [[440,0,.09],[330,.09,.16]],
+    escabio: [[196,0,.12],[185,.13,.12],[175,.26,.20]],
+    click:   [[880,0,.04]]
+  }[name];
+  if(!S) return;
+  S.forEach(([f,t,d])=> tone(f, t, d, name==='click' ? 0.07 : 0.16));
+}
+function updateSfxBtn(){
+  const b = document.getElementById('sfx-btn');
+  if(b) b.textContent = sfxOn ? 'Sonido' : 'Mudo';
+}
+function toggleSfx(){
+  sfxOn = !sfxOn;
+  localStorage.setItem('pmfc_sfx', sfxOn ? 'on' : 'off');
+  updateSfxBtn();
+  if(sfxOn) sfx('add');
+}
+
 /* ---------- Eventos ---------- */
 document.addEventListener('click', e=>{
   const t = e.target.closest('[data-action]');
   if(!t) return;
   const a = t.dataset.action, id = t.dataset.id;
   switch(a){
-    case 'tab': view = t.dataset.view; currentMatchId=null; render(); break;
+    case 'tab': view = t.dataset.view; currentMatchId=null; sfx('click'); render(); break;
     case 'open-match': currentMatchId=id; view='partidos'; render(); break;
     case 'back': currentMatchId=null; render(); break;
     case 'new-match': openNewMatch(); break;
@@ -1222,6 +1272,7 @@ document.addEventListener('click', e=>{
     case 'cloud-change': changeFbConfig(); break;
     case 'cloud-seed': seedCloud(); break;
     case 'cloud-help': openCloudHelp(); break;
+    case 'toggle-sfx': toggleSfx(); break;
   }
 });
 document.addEventListener('change', e=>{
@@ -1231,10 +1282,11 @@ document.addEventListener('change', e=>{
   }
   if(e.target.id==='mvp-select'){
     const m = data.matches.find(x=>x.id===currentMatchId);
-    if(m){ m.mvpId = e.target.value || null; save(); persistMatch(m); }
+    if(m){ m.mvpId = e.target.value || null; sfx('mvp'); save(); persistMatch(m); }
   }
 });
 
+updateSfxBtn();
 render();
 initCloud();
 </script>
