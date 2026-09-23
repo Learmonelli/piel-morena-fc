@@ -136,6 +136,10 @@
   .dot-off{background:#9fd3ac}
   .dot-err{background:var(--red)}
   .dot-idle{background:var(--muted)}
+  textarea{width:100%;margin-top:6px;background:#320d18;border:2px solid #240a12;color:var(--txt);
+    border-radius:8px;padding:12px;font-size:15px;font-family:var(--font-body);resize:vertical}
+  pre.rules{background:#0a1a10;border:1px solid var(--line);border-radius:8px;padding:10px;
+    font-size:11px;line-height:1.5;overflow-x:auto;color:#bfe08a;white-space:pre}
   .side-btns{display:flex;gap:6px}
   .sidebtn{background:transparent;border:1px solid var(--line);color:var(--muted);
     border-radius:9px;padding:7px 13px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit}
@@ -313,6 +317,8 @@
 <div id="modal-root"></div>
 <audio id="anthem" src="himno.mp3" loop preload="none"></audio>
 
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
 <script>
 const KEY = 'pielmorenafc_v1';
 let data = load();
@@ -329,100 +335,118 @@ function load(){
   }catch(e){}
   return { players:[], matches:[] };
 }
-function save(){
-  localStorage.setItem(KEY, JSON.stringify(data));
-  scheduleCloudPush();
+function save(){ localStorage.setItem(KEY, JSON.stringify(data)); }
+
+/* ---------- Nube (Firebase / Firestore) ---------- */
+const FBCFG_KEY = 'pielmorenafc_fbconfig';
+let fbConfig = loadFbConfig();
+let db = null;
+let cloudStarted = false;
+let cloudState = { status:'unset', message:'' };
+let bootLocal = { players:[], matches:[] };
+let gotPlayers = false, gotMatches = false, cloudWasEmpty = false;
+
+function loadFbConfig(){
+  try{ const c = JSON.parse(localStorage.getItem(FBCFG_KEY)); if(c && c.projectId) return c; }catch(e){}
+  return null;
 }
+function cloudConfigured(){ return !!fbConfig; }
+function fsReady(){ return !!db; }
+function cloneLocal(){ return { players: JSON.parse(JSON.stringify(data.players||[])), matches: JSON.parse(JSON.stringify(data.matches||[])) }; }
 
-/* ---------- Nube (GitHub como base de datos) ---------- */
-const CLOUD = { owner:'Learmonelli', repo:'piel-morena-fc', path:'data.json', branch:'main' };
-const TOKEN_KEY = 'pielmorenafc_token';
-let cloudState = { status:'idle', lastPull:null, lastPush:null, message:'' };
-let pushTimer = null;
-
-function getToken(){ return localStorage.getItem(TOKEN_KEY) || ''; }
-function hasToken(){ return !!getToken(); }
-function rawUrl(){ return `https://raw.githubusercontent.com/${CLOUD.owner}/${CLOUD.repo}/${CLOUD.branch}/${CLOUD.path}`; }
-function apiUrl(){ return `https://api.github.com/repos/${CLOUD.owner}/${CLOUD.repo}/contents/${CLOUD.path}`; }
-function b64enc(str){ return btoa(unescape(encodeURIComponent(str))); }
-function cloudHeaders(){
-  return { Authorization:`Bearer ${getToken()}`, Accept:'application/vnd.github+json', 'Content-Type':'application/json' };
+function parseFbConfig(text){
+  let s = String(text||'').trim();
+  s = s.replace(/^\s*(const|let|var)\s+\w+\s*=\s*/, '').replace(/;\s*$/, '');
+  const obj = new Function('return (' + s + ');')();
+  if(!obj || !obj.projectId) throw new Error('falta projectId');
+  return obj;
 }
-
-async function cloudPull(silent){
-  cloudState.status = 'syncing'; cloudState.message = 'Bajando...';
-  if(!silent) renderCloudStatus();
+function saveFbConfig(){
+  const el = document.getElementById('fb-config');
   try{
-    const r = await fetch(rawUrl() + '?t=' + Date.now(), { cache:'no-store' });
-    if(!r.ok) throw new Error('HTTP ' + r.status);
-    const d = await r.json();
-    if(!Array.isArray(d.players) || !Array.isArray(d.matches)) throw new Error('formato inválido');
-    const cloudEmpty = d.players.length===0 && d.matches.length===0;
-    const localHas = data.players.length || data.matches.length;
-    if(cloudEmpty && localHas){
-      cloudState.status = 'local'; cloudState.message = 'La nube está vacía. Subí tus datos.';
-    } else {
-      data = { players:d.players, matches:d.matches };
-      localStorage.setItem(KEY, JSON.stringify(data));
-      cloudState.status = 'ok'; cloudState.lastPull = new Date().toLocaleString();
-      cloudState.message = 'Datos actualizados desde la nube.';
-    }
-  }catch(e){
-    cloudState.status = 'offline'; cloudState.message = 'Sin conexión a la nube.';
-  }
+    fbConfig = parseFbConfig(el ? el.value : '');
+    localStorage.setItem(FBCFG_KEY, JSON.stringify(fbConfig));
+    cloudStarted = false; db = null;
+    initCloud(); render();
+  }catch(e){ alert('No pude leer la config: ' + e.message); }
+}
+function changeFbConfig(){
+  if(!confirm('¿Cambiar la configuración de Firebase?')) return;
+  localStorage.removeItem(FBCFG_KEY);
+  fbConfig = null; db = null; cloudStarted = false;
+  cloudState = { status:'unset', message:'' };
   render();
 }
 
-async function cloudPush(){
-  if(!hasToken()){ alert('Para subir cambios necesitás pegar tu token de GitHub. Tocá "¿Cómo conecto?".'); return; }
-  cloudState.status = 'syncing'; cloudState.message = 'Subiendo...'; renderCloudStatus();
-  try{
-    let sha = null;
-    const cur = await fetch(apiUrl() + '?ref=' + CLOUD.branch, { headers: cloudHeaders(), cache:'no-store' });
-    if(cur.ok) sha = (await cur.json()).sha;
-    const payload = Object.assign({}, data, { updated: new Date().toISOString() });
-    const body = { message:'Actualizar datos Piel Morena FC', content:b64enc(JSON.stringify(payload, null, 2)), branch:CLOUD.branch };
-    if(sha) body.sha = sha;
-    const put = await fetch(apiUrl(), { method:'PUT', headers: cloudHeaders(), body: JSON.stringify(body) });
-    if(!put.ok){ const err = await put.json().catch(()=>({})); throw new Error(err.message || ('HTTP ' + put.status)); }
-    cloudState.status = 'ok'; cloudState.lastPush = new Date().toLocaleString();
-    cloudState.message = 'Datos subidos a la nube.';
-  }catch(e){
-    cloudState.status = 'error'; cloudState.message = 'Error al subir: ' + e.message;
+function initCloud(){
+  if(!cloudConfigured()){ cloudState = { status:'unset', message:'' }; renderCloudStatus(); return; }
+  if(cloudStarted) return;
+  if(typeof firebase === 'undefined'){
+    cloudState = { status:'error', message:'No se pudo cargar el SDK de Firebase.' };
+    renderCloudStatus(); return;
   }
+  try{
+    firebase.initializeApp(fbConfig);
+    db = firebase.firestore();
+    cloudStarted = true;
+    bootLocal = cloneLocal();
+    gotPlayers = gotMatches = cloudWasEmpty = false;
+    cloudState = { status:'syncing', message:'Conectando...' }; renderCloudStatus();
+
+    db.collection('players').onSnapshot(snap=>{
+      data.players = snap.docs.map(d=>d.data());
+      if(!gotPlayers){ gotPlayers = true; if(snap.size===0 && bootLocal.players.length){ cloudWasEmpty = true; data.players = bootLocal.players; } }
+      afterSnapshot();
+    }, err=>cloudFail(err));
+
+    db.collection('matches').onSnapshot(snap=>{
+      data.matches = snap.docs.map(d=>d.data());
+      if(!gotMatches){ gotMatches = true; if(snap.size===0 && bootLocal.matches.length){ cloudWasEmpty = true; data.matches = bootLocal.matches; } }
+      afterSnapshot();
+    }, err=>cloudFail(err));
+  }catch(e){
+    cloudState = { status:'error', message:'Error al iniciar Firebase: ' + e.message };
+    renderCloudStatus();
+  }
+}
+function afterSnapshot(){
+  localStorage.setItem(KEY, JSON.stringify(data));
+  if(cloudWasEmpty) cloudState = { status:'local', message:'La nube está vacía. Subí los datos de este dispositivo.' };
+  else if(cloudState.status !== 'error') cloudState = { status:'ok', message:'Sincronizado en tiempo real.' };
+  render();
+}
+
+function persistPlayer(p){ if(fsReady()) db.collection('players').doc(p.id).set(p).catch(e=>cloudFail(e)); }
+function removePlayerDoc(id){ if(fsReady()) db.collection('players').doc(id).delete().catch(e=>cloudFail(e)); }
+function persistMatch(m){ if(fsReady()) db.collection('matches').doc(m.id).set(m).catch(e=>cloudFail(e)); }
+function removeMatchDoc(id){ if(fsReady()) db.collection('matches').doc(id).delete().catch(e=>cloudFail(e)); }
+function cloudFail(e){ cloudState = { status:'error', message:'Error: ' + (e && e.message ? e.message : e) }; renderCloudStatus(); }
+
+async function seedCloud(){
+  if(!fsReady()){ alert('Primero configurá Firebase.'); return; }
+  if(!(data.players.length || data.matches.length)){ alert('No hay datos en este dispositivo para subir.'); return; }
+  if(!confirm('¿Subir los datos de este dispositivo a la nube? Se agregan a lo que ya haya.')) return;
+  cloudState = { status:'syncing', message:'Subiendo datos...' }; renderCloudStatus();
+  try{
+    const batch = db.batch();
+    data.players.forEach(p=> batch.set(db.collection('players').doc(p.id), p, {merge:true}));
+    data.matches.forEach(m=> batch.set(db.collection('matches').doc(m.id), m, {merge:true}));
+    await batch.commit();
+    cloudWasEmpty = false;
+    cloudState = { status:'ok', message:'Datos subidos. Todo el equipo ya los ve.' };
+  }catch(e){ cloudState = { status:'error', message:'Error al subir: ' + e.message }; }
   renderCloudStatus();
 }
 
-function scheduleCloudPush(){
-  if(!hasToken()) return;
-  clearTimeout(pushTimer);
-  pushTimer = setTimeout(()=>{ cloudPush(); }, 1500);
-}
-function saveToken(){
-  const el = document.getElementById('cloud-token');
-  const t = el ? el.value.trim() : '';
-  if(!t){ alert('Pegá el token primero.'); return; }
-  localStorage.setItem(TOKEN_KEY, t);
-  alert('Token guardado en este dispositivo.');
-  render();
-}
-function clearToken(){
-  if(!confirm('¿Quitar el token de este dispositivo?')) return;
-  localStorage.removeItem(TOKEN_KEY);
-  render();
-}
 function cloudStatusHTML(){
   const map = {
     ok:['dot-ok','Conectado'], syncing:['dot-sync','Sincronizando'],
-    offline:['dot-off','Sin conexión'], error:['dot-err','Error'],
-    local:['dot-local','Solo en este dispositivo'], idle:['dot-idle','Sin conectar']
+    error:['dot-err','Error'], local:['dot-local','Solo en este dispositivo'],
+    unset:['dot-idle','Sin configurar']
   };
-  const [cls,lbl] = map[cloudState.status] || map.idle;
-  const when = cloudState.lastPush ? 'Última subida: ' + cloudState.lastPush
-             : cloudState.lastPull ? 'Última bajada: ' + cloudState.lastPull : '';
+  const [cls,lbl] = map[cloudState.status] || map.unset;
   return `<div class="cloud-line"><span class="dot ${cls}"></span><b>${lbl}</b></div>
-    ${cloudState.message ? `<p class="muted">${esc(cloudState.message)}</p>` : ''}
-    ${when ? `<p class="muted">${esc(when)}</p>` : ''}`;
+    ${cloudState.message ? `<p class="muted">${esc(cloudState.message)}</p>` : ''}`;
 }
 function renderCloudStatus(){
   const el = document.getElementById('cloud-status');
@@ -430,18 +454,23 @@ function renderCloudStatus(){
 }
 function openCloudHelp(){
   openModal(`
-    <h3>Cómo conectar la nube</h3>
-    <p class="muted">Lo hace una sola vez el encargado. Sirve para que lo que cargues se guarde y lo vea todo el equipo.</p>
+    <h3>Cómo conectar la nube (Firebase)</h3>
+    <p class="muted">Se hace una sola vez. Después todos ven y cargan en tiempo real.</p>
     <ol class="muted" style="padding-left:18px;line-height:1.75">
-      <li>Entrá a github.com con tu cuenta.</li>
-      <li>Settings → Developer settings → Personal access tokens → <b>Fine-grained tokens</b>.</li>
-      <li>Generate new token. Nombre: "Piel Morena FC".</li>
-      <li>Repository access: <b>Only select repositories</b> → elegí <b>piel-morena-fc</b>.</li>
-      <li>Permissions → Repository permissions → <b>Contents: Read and write</b>.</li>
-      <li>Generate y copiá el token (empieza con github_pat_).</li>
-      <li>Pegalo en la sección Nube y guardá.</li>
+      <li>Entrá a <b>console.firebase.google.com</b> con tu cuenta de Google y creá un proyecto.</li>
+      <li>Menú <b>Compilación → Firestore Database</b> → Crear base de datos → <b>modo producción</b>.</li>
+      <li>Pestaña <b>Reglas</b>: pegá las reglas de abajo y tocá Publicar.</li>
+      <li>Engranaje ⚙ → <b>Configuración del proyecto</b> → "Tus apps" → app <b>Web (&lt;/&gt;)</b> → copiá el objeto <b>firebaseConfig</b>.</li>
+      <li>Pegalo en el campo de abajo y guardá. Listo.</li>
     </ol>
-    <p class="muted">El token queda solo en tu celular. No lo compartas con nadie.</p>
+    <p class="muted">Reglas (cualquiera con el link puede leer y cargar):</p>
+    <pre class="rules">rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+    match /players/{id} { allow read, write: if true; }
+    match /matches/{id} { allow read, write: if true; }
+  }
+}</pre>
     <div class="modal-actions"><button class="btn primary" data-action="modal-close">Entendido</button></div>
   `);
 }
@@ -834,21 +863,23 @@ function jugadoresHTML(){
     </div>
 
     <div class="card">
-      <h3>Nube (datos compartidos)</h3>
+      <h3>Nube (Firebase · datos compartidos)</h3>
       <div id="cloud-status">${cloudStatusHTML()}</div>
-      <div class="toolbar">
-        <button class="btn ghost sm" data-action="cloud-pull">Sincronizar</button>
-        ${hasToken()
-          ? `<button class="btn primary sm" data-action="cloud-push">Subir cambios</button>
-             <button class="btn danger sm" data-action="cloud-clear-token">Quitar token</button>`
-          : `<button class="btn ghost sm" data-action="cloud-help">¿Cómo conecto?</button>`}
-      </div>
-      ${hasToken()
-        ? `<p class="muted" style="margin-top:10px">Cada cambio se sube solo a la nube. El resto del equipo lo ve al abrir o tocar "Sincronizar".</p>`
-        : `<label style="margin:12px 0 0">Token de GitHub <span class="hint">(solo el encargado)</span>
-             <input id="cloud-token" type="password" placeholder="github_pat_..." autocomplete="off">
+      ${cloudConfigured()
+        ? `<div class="toolbar">
+             ${cloudState.status==='local' || !cloudState.status
+                ? `<button class="btn primary sm" data-action="cloud-seed">Subir datos de este dispositivo</button>`
+                : ''}
+             <button class="btn ghost sm" data-action="cloud-help">Ayuda</button>
+             <button class="btn danger sm" data-action="cloud-change">Cambiar config</button>
+           </div>
+           <p class="muted" style="margin-top:10px">Todo lo que cargues se guarda en la nube y el equipo lo ve al instante.</p>`
+        : `<p class="muted">Conectá la base de datos para que los datos los vea y cargue todo el equipo.</p>
+           <button class="btn ghost block" data-action="cloud-help" style="margin-bottom:12px">¿Cómo conecto?</button>
+           <label>Pegá acá tu <b>firebaseConfig</b>
+             <textarea id="fb-config" rows="6" placeholder='{ "apiKey": "...", "projectId": "...", ... }' autocomplete="off"></textarea>
            </label>
-           <button class="btn ghost block" data-action="cloud-save-token">Guardar token</button>`}
+           <button class="btn primary block" data-action="cloud-save-config">Guardar y conectar</button>`}
     </div>
 
     <div class="card">
@@ -926,7 +957,7 @@ function createMatch(){
     rivalName: rival,
     teamA: [], teamB: [], events: [], mvpId: null
   };
-  data.matches.push(m); save(); closeModal();
+  data.matches.push(m); save(); persistMatch(m); closeModal();
   currentMatchId = m.id; view='partidos'; render();
 }
 function toggleTeam(pid, side){
@@ -936,7 +967,7 @@ function toggleTeam(pid, side){
   const i = arr.indexOf(pid);
   if(i>=0) arr.splice(i,1);
   else { const j=other.indexOf(pid); if(j>=0) other.splice(j,1); arr.push(pid); }
-  save(); render();
+  save(); persistMatch(m); render();
 }
 function confirmGoal(){
   const m = data.matches.find(x=>x.id===currentMatchId); if(!m) return;
@@ -946,29 +977,30 @@ function confirmGoal(){
   let assistId = assistEl ? (assistEl.value || null) : null;
   if(assistId === scorerId) assistId = null;
   m.events.push({ id: uid(), side, scorerId, assistId });
-  save(); closeModal(); render();
+  save(); persistMatch(m); closeModal(); render();
 }
 function delGoal(id){
   const m = data.matches.find(x=>x.id===currentMatchId); if(!m) return;
-  m.events = m.events.filter(e=>e.id!==id); save(); render();
+  m.events = m.events.filter(e=>e.id!==id); save(); persistMatch(m); render();
 }
 function deleteMatch(id){
   if(!confirm('¿Eliminar este partido y sus estadísticas?')) return;
   data.matches = data.matches.filter(m=>m.id!==id);
-  currentMatchId=null; save(); render();
+  currentMatchId=null; save(); removeMatchDoc(id); render();
 }
 function addPlayer(){
   const name = $('#p-name').value.trim();
   if(!name){ alert('Poné al menos el nombre.'); return; }
-  data.players.push({
+  const p = {
     id: uid(), name,
     nickname: $('#p-nick').value.trim(),
     number: $('#p-num').value.trim(),
     position: $('#p-pos').value,
     face: Object.assign({}, newFace)
-  });
+  };
+  data.players.push(p);
   newFace = null;
-  save(); render();
+  save(); persistPlayer(p); render();
 }
 function updateFacePreview(){
   const el = document.getElementById('face-preview');
@@ -990,7 +1022,7 @@ function delPlayer(id){
     m.events = (m.events||[]).filter(e=> e.scorerId!==id && e.assistId!==id);
     if(m.mvpId===id) m.mvpId=null;
   });
-  save(); render();
+  save(); removePlayerDoc(id); data.matches.forEach(persistMatch); render();
 }
 function exportData(){
   const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
@@ -1068,10 +1100,9 @@ document.addEventListener('click', e=>{
     case 'export': exportData(); break;
     case 'import': importData(); break;
     case 'reset': resetData(); break;
-    case 'cloud-pull': cloudPull(false); break;
-    case 'cloud-push': cloudPush(); break;
-    case 'cloud-save-token': saveToken(); break;
-    case 'cloud-clear-token': clearToken(); break;
+    case 'cloud-save-config': saveFbConfig(); break;
+    case 'cloud-change': changeFbConfig(); break;
+    case 'cloud-seed': seedCloud(); break;
     case 'cloud-help': openCloudHelp(); break;
   }
 });
@@ -1082,12 +1113,12 @@ document.addEventListener('change', e=>{
   }
   if(e.target.id==='mvp-select'){
     const m = data.matches.find(x=>x.id===currentMatchId);
-    if(m){ m.mvpId = e.target.value || null; save(); }
+    if(m){ m.mvpId = e.target.value || null; save(); persistMatch(m); }
   }
 });
 
 render();
-cloudPull(true);
+initCloud();
 </script>
 </body>
 </html>
