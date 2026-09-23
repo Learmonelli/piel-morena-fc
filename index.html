@@ -115,6 +115,8 @@
   input:focus,select:focus{outline:none;border-color:var(--gold)}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .hint{font-weight:400;font-size:11px}
+  .check{display:flex;align-items:center;gap:8px;font-size:15px;color:var(--muted);font-weight:600;margin-bottom:12px;cursor:pointer}
+  input[type=checkbox]{width:auto;margin:0;accent-color:var(--gold);transform:scale(1.25)}
 
   /* Assign rows */
   .assign-row{display:flex;align-items:center;justify-content:space-between;
@@ -201,6 +203,8 @@
 
   /* Post-partido: escabio + comentarios */
   .esc-ctrl{display:flex;align-items:center;gap:8px}
+  .guest-add{display:flex;gap:6px;margin-bottom:12px}
+  .guest-add input{flex:1;margin-top:0}
   .esc-val{min-width:24px;text-align:center;font-weight:800;font-size:17px;color:var(--gold)}
   .comment{border-bottom:1px solid rgba(74,33,48,.55);padding:8px 0}
   .comment:last-child{border-bottom:0}
@@ -367,7 +371,7 @@
       </svg>
       <div>
         <h1>Piel Morena FC</h1>
-        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v24</span></p>
+        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v25</span></p>
       </div>
     </div>
     <div class="header-btns">
@@ -544,6 +548,7 @@ function $(s){ return document.querySelector(s); }
 function fmtDate(d){ if(!d) return 'Sin fecha'; const [y,m,day]=d.split('-'); return `${day}/${m}/${y}`; }
 function getPlayer(id){ return data.players.find(p=>p.id===id); }
 function pname(id){ const p=getPlayer(id); return p ? (p.nickname || p.name) : '—'; }
+function invBadge(p){ return p && p.guest ? ' <span class="pill">invitado</span>' : ''; }
 function scoreOf(m,side){ return (m.events||[]).filter(e=>e.side===side).length; }
 function qtyOf(map, id){
   if(!map) return 0;
@@ -770,13 +775,19 @@ function matchDetailHTML(){
     const bBtn = isRival ? '' :
       `<button class="sidebtn ${inB?'on':''}" data-action="toggle-team" data-id="${p.id}" data-side="B">B</button>`;
     return `<div class="assign-row">
-      <span class="pname">${playerAvatar(p,30)}${p.number?`<span class="num">${esc(p.number)}</span>`:''}${esc(pname(p.id))}</span>
+      <span class="pname">${playerAvatar(p,30)}${p.number?`<span class="num">${esc(p.number)}</span>`:''}${esc(pname(p.id))}${invBadge(p)}</span>
       <div class="side-btns">
         <button class="sidebtn ${inA?'on':''}" data-action="toggle-team" data-id="${p.id}" data-side="A">${isRival?'Juega':'A'}</button>
         ${bBtn}
       </div>
     </div>`;
   }).join('') : '<p class="muted">Primero cargá jugadores en la pestaña Jugadores.</p>';
+
+  const guestAdd = `<div class="guest-add">
+      <input id="g-name" type="text" placeholder="Invitado (sin perfil)…" autocomplete="off">
+      <button class="btn ghost sm" data-action="add-guest" data-side="A">+ A</button>
+      ${isRival?'':`<button class="btn ghost sm" data-action="add-guest" data-side="B">+ B</button>`}
+    </div>`;
 
   const goals = m.events.length ? m.events.map(ev=>{
     const sideName = ev.side==='A' ? m.teamAName : m.teamBName;
@@ -842,6 +853,7 @@ function matchDetailHTML(){
     <div class="card">
       <h3>${isRival?'Quiénes juegan':'Armar los equipos'}
         <span class="hint">· A: ${m.teamA.length}${isRival?'':' · B: '+m.teamB.length}</span></h3>
+      ${guestAdd}
       ${assign}
     </div>
 
@@ -923,7 +935,7 @@ function rankingHTML(){
     <div class="rank-row clickable" data-action="open-player" data-id="${r.p.id}">
       <span class="rank-pos">${i+1}</span>
       ${playerAvatar(r.p,30)}
-      <span class="rank-name">${esc(r.p.name)} <span class="rank-sub">· ${r.s.pj} PJ</span></span>
+      <span class="rank-name">${esc(r.p.name)}${invBadge(r.p)} <span class="rank-sub">· ${r.s.pj} PJ</span></span>
       <span class="rank-val">${fn(r.s)}</span>
     </div>`).join('');
   return `<div class="card">${head}<div class="podium">${pod}</div><div class="rank-list">${rest}</div></div>`;
@@ -948,7 +960,7 @@ function statsHTML(){
   </div>`;
   const body = rows.map((r,i)=>`<tr>
     <td class="c"><span class="rk">${i+1}</span></td>
-    <td class="clickable" data-action="open-player" data-id="${r.p.id}"><span class="pname">${playerAvatar(r.p,26)}${r.p.number?`<span class="num">${esc(r.p.number)}</span>`:''}${esc(r.p.name)}</span></td>
+    <td class="clickable" data-action="open-player" data-id="${r.p.id}"><span class="pname">${playerAvatar(r.p,26)}${r.p.number?`<span class="num">${esc(r.p.number)}</span>`:''}${esc(r.p.name)}${invBadge(r.p)}</span></td>
     <td class="c">${r.s.pj}</td>
     <td class="c"><b>${r.s.goles}</b></td>
     <td class="c">${r.s.asist}</td>
@@ -988,6 +1000,7 @@ function playerDetailHTML(){
             ${['','Arquero','Defensor','Mediocampista','Delantero'].map(o=>`<option value="${o}" ${(p.position||'')===o?'selected':''}>${o||'Sin definir'}</option>`).join('')}
           </select>
         </label>
+        <label class="check"><input type="checkbox" id="e-guest" ${p.guest?'checked':''}> Invitado (no del plantel)</label>
         ${faceEditorHTML()}
         <div class="grid2">
           <button class="btn ghost" data-action="cancel-edit">Cancelar</button>
@@ -1035,7 +1048,7 @@ function playerDetailHTML(){
       <div class="profile-top">
         ${playerAvatar(p,72)}
         <div>
-          <h2>${esc(p.name)}</h2>
+          <h2>${esc(p.name)}${invBadge(p)}</h2>
           ${p.nickname?`<p class="muted">"${esc(p.nickname)}"</p>`:''}
           <p class="muted">${p.number?'Dorsal '+esc(p.number):''}${p.number&&p.position?' · ':''}${p.position?esc(p.position):''}</p>
         </div>
@@ -1072,12 +1085,14 @@ function faceEditorHTML(){
 }
 function jugadoresHTML(){
   if(!newFace) newFace = randomFace();
-  const list = data.players.length ? data.players.map(p=>`<div class="assign-row clickable" data-action="open-player" data-id="${p.id}">
+  const rowHTML = p => `<div class="assign-row clickable" data-action="open-player" data-id="${p.id}">
       <span class="pname">${playerAvatar(p,30)}${p.number?`<span class="num">${esc(p.number)}</span>`:''}${esc(p.name)}
         ${p.nickname?`<span class="muted">· ${esc(p.nickname)}</span>`:''}
-        ${p.position?`<span class="muted">(${esc(p.position)})</span>`:''}</span>
+        ${p.position?`<span class="muted">(${esc(p.position)})</span>`:''}${invBadge(p)}</span>
       <button class="icon-btn" data-action="del-player" data-id="${p.id}">×</button>
-    </div>`).join('') : '<p class="muted">Todavía no hay jugadores. Agregá al plantel.</p>';
+    </div>`;
+  const roster = data.players.filter(p=>!p.guest);
+  const guests = data.players.filter(p=>p.guest);
 
   return `
     <div class="card">
@@ -1100,13 +1115,15 @@ function jugadoresHTML(){
           <option>Delantero</option>
         </select>
       </label>
+      <label class="check"><input type="checkbox" id="p-guest"> Invitado (no del plantel)</label>
       ${faceEditorHTML()}
       <button class="btn primary block" data-action="add-player">Agregar al plantel</button>
     </div>
 
     <div class="card">
-      <h3>Plantel (${data.players.length})</h3>
-      ${list}
+      <h3>Plantel (${roster.length})</h3>
+      ${roster.length ? roster.map(rowHTML).join('') : '<p class="muted">Todavía no hay jugadores. Agregá al plantel.</p>'}
+      ${guests.length ? `<h3 style="margin-top:16px">Invitados (${guests.length})</h3>${guests.map(rowHTML).join('')}` : ''}
     </div>
 
     <div class="card">
@@ -1284,11 +1301,22 @@ function addPlayer(){
     nickname: $('#p-nick').value.trim(),
     number: $('#p-num').value.trim(),
     position: $('#p-pos').value,
+    guest: $('#p-guest').checked,
     face: Object.assign({}, newFace)
   };
   data.players.push(p);
   newFace = null;
   save(); persistPlayer(p); render();
+}
+function addGuest(side){
+  const el = document.getElementById('g-name');
+  const name = el ? el.value.trim() : '';
+  if(!name){ alert('Escribí el nombre del invitado.'); return; }
+  const m = data.matches.find(x=>x.id===currentMatchId); if(!m) return;
+  const p = { id: uid(), name, nickname:'', number:'', position:'', guest:true, face: randomFace() };
+  data.players.push(p);
+  if(side === 'B') m.teamB.push(p.id); else m.teamA.push(p.id);
+  save(); persistPlayer(p); persistMatch(m); render();
 }
 function savePlayer(){
   const p = getPlayer(currentPlayerId); if(!p) return;
@@ -1298,6 +1326,7 @@ function savePlayer(){
   p.nickname = document.getElementById('e-nick').value.trim();
   p.number = document.getElementById('e-num').value.trim();
   p.position = document.getElementById('e-pos').value;
+  p.guest = document.getElementById('e-guest').checked;
   p.face = Object.assign({}, newFace);
   newFace = null;
   playerEditMode = false;
@@ -1525,6 +1554,7 @@ document.addEventListener('click', e=>{
     case 'new-match': openNewMatch(); break;
     case 'create-match': createMatch(); break;
     case 'add-player': addPlayer(); break;
+    case 'add-guest': addGuest(t.dataset.side); break;
     case 'del-player': delPlayer(id); break;
     case 'face-set': {
       const k = t.dataset.key;
