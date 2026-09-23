@@ -367,7 +367,7 @@
       </svg>
       <div>
         <h1>Piel Morena FC</h1>
-        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v22</span></p>
+        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v23</span></p>
       </div>
     </div>
     <div class="header-btns">
@@ -746,15 +746,6 @@ function escabioPostHTML(){
     </div>`;
   }).join('') || '<p class="muted">Ese partido no tiene jugadores asignados.</p>';
 
-  const hachOpts = played.map(id=>`<option value="${id}" ${m.hachazoId===id?'selected':''}>${esc(pname(id))}</option>`).join('');
-  const hachSelect = played.length
-    ? `<select id="hachazo-select"><option value="">Sin definir</option>${hachOpts}</select>`
-    : '<p class="muted">Sin jugadores asignados.</p>';
-  const polOpts = played.map(id=>`<option value="${id}" ${m.polemicaId===id?'selected':''}>${esc(pname(id))}</option>`).join('');
-  const polSelect = played.length
-    ? `<select id="polemica-select"><option value="">Sin definir</option>${polOpts}</select>`
-    : '<p class="muted">Sin jugadores asignados.</p>';
-
   const cs = m.comments || [];
   const comments = cs.length ? cs.map(c=>`<div class="comment">
       <div class="comment-head"><b>${esc(c.author||'Anónimo')}</b>
@@ -766,11 +757,7 @@ function escabioPostHTML(){
   return `<div class="card">
     <h3>Post-partido</h3>
     <label>Partido<select id="esc-match">${opts}</select></label>
-    <h3 style="margin-top:4px">Jugador Hachazo</h3>
-    ${hachSelect}
-    <h3 style="margin-top:16px">Jugador polémica</h3>
-    ${polSelect}
-    <h3 style="margin-top:16px">Escabio <span class="hint">· ${escTotal(m)}</span></h3>
+    <h3 style="margin-top:4px">Escabio <span class="hint">· ${escTotal(m)}</span></h3>
     ${escRows}
     <h3 style="margin-top:16px">Comentarios <span class="hint">· ${cs.length}</span></h3>
     <div class="comment-list">${comments}</div>
@@ -816,6 +803,15 @@ function matchDetailHTML(){
     ? `<select id="mvp-select"><option value="">Sin definir</option>${mvpOpts}</select>`
     : `<p class="muted">Asigná jugadores primero.</p>`;
 
+  const hachazoOpts = played.map(id=>`<option value="${id}" ${m.hachazoId===id?'selected':''}>${esc(pname(id))}</option>`).join('');
+  const hachazoSelect = played.length
+    ? `<select id="hachazo-select"><option value="">Sin definir</option>${hachazoOpts}</select>`
+    : `<p class="muted">Asigná jugadores primero.</p>`;
+  const polOpts = played.map(id=>`<option value="${id}" ${m.polemicaId===id?'selected':''}>${esc(pname(id))}</option>`).join('');
+  const polSelect = played.length
+    ? `<select id="polemica-select"><option value="">Sin definir</option>${polOpts}</select>`
+    : `<p class="muted">Asigná jugadores primero.</p>`;
+
   return `
     <button class="btn ghost sm" data-action="back" style="margin-bottom:14px">← Volver</button>
     <div class="card">
@@ -839,6 +835,16 @@ function matchDetailHTML(){
     <div class="card">
       <h3>Figura del partido</h3>
       ${mvpSelect}
+    </div>
+
+    <div class="card">
+      <h3>Jugador Hachazo</h3>
+      ${hachazoSelect}
+    </div>
+
+    <div class="card">
+      <h3>Jugador Polémica</h3>
+      ${polSelect}
     </div>
 
     <div class="card">
@@ -1575,11 +1581,11 @@ document.addEventListener('change', e=>{
     if(m){ m.mvpId = e.target.value || null; sfx('mvp'); save(); persistMatch(m); }
   }
   if(e.target.id==='hachazo-select'){
-    const m = data.matches.find(x=>x.id===escabioMatchId);
+    const m = data.matches.find(x=>x.id===currentMatchId) || data.matches.find(x=>x.id===escabioMatchId);
     if(m){ m.hachazoId = e.target.value || null; save(); persistMatch(m); render(); }
   }
   if(e.target.id==='polemica-select'){
-    const m = data.matches.find(x=>x.id===escabioMatchId);
+    const m = data.matches.find(x=>x.id===currentMatchId) || data.matches.find(x=>x.id===escabioMatchId);
     if(m){ m.polemicaId = e.target.value || null; save(); persistMatch(m); render(); }
   }
 });
