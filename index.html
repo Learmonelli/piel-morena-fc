@@ -195,6 +195,17 @@
   .rank-name{flex:1;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .rank-sub{color:var(--muted);font-size:11px}
   .rank-val{font-weight:800;font-size:18px;color:var(--gold)}
+
+  /* Post-partido: escabio + comentarios */
+  .esc-ctrl{display:flex;align-items:center;gap:8px}
+  .esc-val{min-width:24px;text-align:center;font-weight:800;font-size:17px;color:var(--gold)}
+  .comment{border-bottom:1px solid rgba(74,33,48,.55);padding:8px 0}
+  .comment:last-child{border-bottom:0}
+  .comment-head{display:flex;align-items:center;gap:8px}
+  .comment-head b{font-size:14px}
+  .comment-time{font-size:11px;color:var(--muted);flex:1}
+  .comment-head .icon-btn{margin-left:auto}
+  .comment-text{margin:4px 0 0;font-size:15px;word-break:break-word;white-space:pre-wrap}
   .clickable{cursor:pointer}
   .win{color:#bfe08a}
   .loss{color:#ff9a9d}
@@ -360,6 +371,8 @@ let currentPlayerId = null;
 let playerBackView = 'jugadores';
 let newFace = null;
 let rankCat = 'goles';
+let escabioMatchId = null;
+let commentName = localStorage.getItem('pmfc_name') || '';
 
 function load(){
   try{
@@ -545,6 +558,24 @@ function fmtDate(d){ if(!d) return 'Sin fecha'; const [y,m,day]=d.split('-'); re
 function getPlayer(id){ return data.players.find(p=>p.id===id); }
 function pname(id){ const p=getPlayer(id); return p ? (p.nickname || p.name) : '—'; }
 function scoreOf(m,side){ return (m.events||[]).filter(e=>e.side===side).length; }
+function escQty(m, id){
+  const e = m.escabio;
+  if(!e) return 0;
+  if(Array.isArray(e)) return e.includes(id) ? 1 : 0;
+  return Number(e[id]) || 0;
+}
+function migEsc(m){
+  const o = {};
+  if(Array.isArray(m.escabio)) m.escabio.forEach(id=>{ o[id] = 1; });
+  else if(m.escabio && typeof m.escabio === 'object') Object.assign(o, m.escabio);
+  return o;
+}
+function escTotal(m){
+  const e = m.escabio;
+  if(!e) return 0;
+  if(Array.isArray(e)) return e.length;
+  return Object.values(e).reduce((sum,v)=> sum + (Number(v) || 0), 0);
+}
 
 /* ---------- Avatar pixel art (16-bit) ---------- */
 function hashStr(s){
@@ -694,7 +725,48 @@ function partidosHTML(){
       <div class="score"><b>${a}</b><span>-</span><b>${b}</b></div>
     </article>`;
   }).join('');
-  return head + cards;
+  return head + cards + escabioPostHTML();
+}
+
+function escabioPostHTML(){
+  const ms = [...data.matches].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  if(!ms.length) return '';
+  if(!escabioMatchId || !ms.find(m=>m.id===escabioMatchId)) escabioMatchId = ms[0].id;
+  const m = ms.find(x=>x.id===escabioMatchId);
+  const opts = ms.map(x=>`<option value="${x.id}" ${x.id===m.id?'selected':''}>${fmtDate(x.date)} · ${esc(x.teamAName)} vs ${esc(x.teamBName)}</option>`).join('');
+
+  const played = [...(m.teamA||[]), ...(m.teamB||[])].filter(id=>getPlayer(id));
+  const escRows = played.map(id=>{
+    const q = escQty(m, id);
+    return `<div class="assign-row">
+      <span class="pname">${playerAvatar(getPlayer(id),26)}${esc(pname(id))}</span>
+      <div class="esc-ctrl">
+        <button class="icon-btn" data-action="esc-dec" data-id="${id}">−</button>
+        <span class="esc-val">${q}</span>
+        <button class="icon-btn" data-action="esc-inc" data-id="${id}">+</button>
+      </div>
+    </div>`;
+  }).join('') || '<p class="muted">Ese partido no tiene jugadores asignados.</p>';
+
+  const cs = m.comments || [];
+  const comments = cs.length ? cs.map(c=>`<div class="comment">
+      <div class="comment-head"><b>${esc(c.author||'Anónimo')}</b>
+        <span class="comment-time">${c.ts?new Date(c.ts).toLocaleString():''}</span>
+        <button class="icon-btn" data-action="del-comment" data-id="${c.id}">×</button></div>
+      <p class="comment-text">${esc(c.text)}</p>
+    </div>`).join('') : '<p class="muted">Todavía no hay comentarios.</p>';
+
+  return `<div class="card">
+    <h3>Post-partido</h3>
+    <label>Partido<select id="esc-match">${opts}</select></label>
+    <h3 style="margin-top:4px">Escabio <span class="hint">· ${escTotal(m)}</span></h3>
+    ${escRows}
+    <h3 style="margin-top:16px">Comentarios <span class="hint">· ${cs.length}</span></h3>
+    <div class="comment-list">${comments}</div>
+    <label>Tu nombre<input id="c-name" type="text" value="${esc(commentName)}" placeholder="Ej: Tuti" autocomplete="off"></label>
+    <label>Comentario<textarea id="c-text" rows="2" placeholder="¿Cómo estuvo el partido?" autocomplete="off"></textarea></label>
+    <button class="btn primary block" data-action="add-comment">Comentar</button>
+  </div>`;
 }
 
 function matchDetailHTML(){
@@ -733,15 +805,6 @@ function matchDetailHTML(){
     ? `<select id="mvp-select"><option value="">Sin definir</option>${mvpOpts}</select>`
     : `<p class="muted">Asigná jugadores primero.</p>`;
 
-  const escabioIds = m.escabio || [];
-  const escabioList = played.filter(id=>getPlayer(id)).map(id=>{
-    const on = escabioIds.includes(id);
-    return `<div class="assign-row">
-      <span class="pname">${playerAvatar(getPlayer(id),26)}${esc(pname(id))}</span>
-      <button class="sidebtn ${on?'on':''}" data-action="toggle-escabio" data-id="${id}">${on?'Tomó':'—'}</button>
-    </div>`;
-  }).join('') || '<p class="muted">Asigná jugadores primero.</p>';
-
   return `
     <button class="btn ghost sm" data-action="back" style="margin-bottom:14px">← Volver</button>
     <div class="card">
@@ -765,11 +828,6 @@ function matchDetailHTML(){
     <div class="card">
       <h3>Figura del partido</h3>
       ${mvpSelect}
-    </div>
-
-    <div class="card">
-      <h3>Escabio tomado <span class="hint">· ${escabioIds.length}</span></h3>
-      ${escabioList}
     </div>
 
     <div class="card">
@@ -797,7 +855,7 @@ function computeStats(){
       if(ev.assistId && st[ev.assistId]) st[ev.assistId].asist++;
     });
     if(m.mvpId && st[m.mvpId]) st[m.mvpId].mvp++;
-    (m.escabio||[]).forEach(id=>{ if(st[id]) st[id].escabio++; });
+    data.players.forEach(p=>{ st[p.id].escabio += escQty(m, p.id); });
   });
   return st;
 }
@@ -1089,12 +1147,30 @@ function toggleTeam(pid, side){
   else { const j=other.indexOf(pid); if(j>=0) other.splice(j,1); arr.push(pid); }
   save(); persistMatch(m); render();
 }
-function toggleEscabio(pid){
-  const m = data.matches.find(x=>x.id===currentMatchId); if(!m) return;
-  if(!m.escabio) m.escabio = [];
-  const i = m.escabio.indexOf(pid);
-  if(i>=0) m.escabio.splice(i,1); else m.escabio.push(pid);
-  sfx('escabio'); save(); persistMatch(m); render();
+function escAdjust(pid, delta){
+  const m = data.matches.find(x=>x.id===escabioMatchId); if(!m) return;
+  if(!m.escabio || Array.isArray(m.escabio)) m.escabio = migEsc(m);
+  let q = (Number(m.escabio[pid]) || 0) + delta;
+  if(q < 0) q = 0;
+  if(q === 0) delete m.escabio[pid]; else m.escabio[pid] = q;
+  save(); persistMatch(m); render();
+}
+function addComment(){
+  const m = data.matches.find(x=>x.id===escabioMatchId); if(!m) return;
+  const nameEl = document.getElementById('c-name');
+  const textEl = document.getElementById('c-text');
+  const name = nameEl ? nameEl.value.trim() : '';
+  const text = textEl ? textEl.value.trim() : '';
+  if(!text){ alert('Escribí un comentario.'); return; }
+  if(name){ commentName = name; localStorage.setItem('pmfc_name', name); }
+  if(!m.comments) m.comments = [];
+  m.comments.push({ id: uid(), author: name || 'Anónimo', text, ts: Date.now() });
+  save(); persistMatch(m); render();
+}
+function delComment(cid){
+  const m = data.matches.find(x=>x.id===escabioMatchId); if(!m || !m.comments) return;
+  m.comments = m.comments.filter(c=>c.id!==cid);
+  save(); persistMatch(m); render();
 }
 function confirmGoal(){
   const m = data.matches.find(x=>x.id===currentMatchId); if(!m) return;
@@ -1113,7 +1189,7 @@ function delGoal(id){
 function deleteMatch(id){
   if(!confirm('¿Eliminar este partido y sus estadísticas?')) return;
   data.matches = data.matches.filter(m=>m.id!==id);
-  currentMatchId=null; sfx('del'); save(); removeMatchDoc(id); render();
+  currentMatchId=null; save(); removeMatchDoc(id); render();
 }
 function addPlayer(){
   const name = $('#p-name').value.trim();
@@ -1127,7 +1203,7 @@ function addPlayer(){
   };
   data.players.push(p);
   newFace = null;
-  sfx('add'); save(); persistPlayer(p); render();
+  save(); persistPlayer(p); render();
 }
 function updateFacePreview(){
   const el = document.getElementById('face-preview');
@@ -1149,7 +1225,7 @@ function delPlayer(id){
     m.events = (m.events||[]).filter(e=> e.scorerId!==id && e.assistId!==id);
     if(m.mvpId===id) m.mvpId=null;
   });
-  sfx('del'); save(); removePlayerDoc(id); data.matches.forEach(persistMatch); render();
+  save(); removePlayerDoc(id); data.matches.forEach(persistMatch); render();
 }
 function exportData(){
   const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
@@ -1236,7 +1312,6 @@ function toggleSfx(){
   sfxOn = !sfxOn;
   localStorage.setItem('pmfc_sfx', sfxOn ? 'on' : 'off');
   updateSfxBtn();
-  if(sfxOn) sfx('add');
 }
 
 /* ---------- Eventos ---------- */
@@ -1245,7 +1320,7 @@ document.addEventListener('click', e=>{
   if(!t) return;
   const a = t.dataset.action, id = t.dataset.id;
   switch(a){
-    case 'tab': view = t.dataset.view; currentMatchId=null; sfx('click'); render(); break;
+    case 'tab': view = t.dataset.view; currentMatchId=null; render(); break;
     case 'open-match': currentMatchId=id; view='partidos'; render(); break;
     case 'back': currentMatchId=null; render(); break;
     case 'new-match': openNewMatch(); break;
@@ -1263,7 +1338,10 @@ document.addEventListener('click', e=>{
     case 'open-player': playerBackView = view; currentPlayerId = id; view='jugador'; render(); break;
     case 'player-back': view = playerBackView; currentPlayerId = null; render(); break;
     case 'toggle-team': toggleTeam(id, t.dataset.side); break;
-    case 'toggle-escabio': toggleEscabio(id); break;
+    case 'esc-inc': escAdjust(id, 1); break;
+    case 'esc-dec': escAdjust(id, -1); break;
+    case 'add-comment': addComment(); break;
+    case 'del-comment': delComment(id); break;
     case 'rank-cat': rankCat = t.dataset.cat; render(); break;
     case 'add-goal': openAddGoal(t.dataset.side); break;
     case 'confirm-goal': confirmGoal(); break;
@@ -1286,6 +1364,7 @@ document.addEventListener('change', e=>{
     const w = $('#m-rival-wrap');
     if(w) w.style.display = e.target.value==='rival' ? 'block' : 'none';
   }
+  if(e.target.id==='esc-match'){ escabioMatchId = e.target.value; render(); }
   if(e.target.id==='mvp-select'){
     const m = data.matches.find(x=>x.id===currentMatchId);
     if(m){ m.mvpId = e.target.value || null; sfx('mvp'); save(); persistMatch(m); }
