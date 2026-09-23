@@ -1050,6 +1050,11 @@ function jugadoresHTML(){
         <button class="btn ghost sm" data-action="import">Importar</button>
         <button class="btn danger sm" data-action="reset">Borrar todo</button>
       </div>
+      <h3 style="margin-top:16px">Himno personalizado <span class="hint">· solo este dispositivo</span></h3>
+      <p class="muted">Elegí un audio de tu dispositivo para el botón Himno. Se guarda en tu navegador y <b>no se sube</b> a internet.</p>
+      ${customHimno ? `<p class="muted">Cargado: <b>${esc(customHimno.name || 'audio')}</b></p>` : ''}
+      <label>Archivo de audio<input type="file" id="himno-file" accept="audio/*"></label>
+      ${customHimno ? `<button class="btn ghost sm" data-action="himno-clear">Quitar himno</button>` : ''}
     </div>
 
     <div class="card">
@@ -1356,6 +1361,58 @@ function updateHimnoBtn(){
   b.classList.toggle('playing', himnoOn);
 }
 
+/* ---------- Himno local (solo este dispositivo, no se sube) ---------- */
+let customHimno = null;
+function idb(){
+  return new Promise((res, rej)=>{
+    const r = indexedDB.open('pmfc', 1);
+    r.onupgradeneeded = ()=> r.result.createObjectStore('files');
+    r.onsuccess = ()=> res(r.result);
+    r.onerror = ()=> rej(r.error);
+  });
+}
+async function idbSet(k,v){ const d = await idb(); return new Promise((res,rej)=>{ const tx=d.transaction('files','readwrite'); tx.objectStore('files').put(v,k); tx.oncomplete=()=>res(); tx.onerror=()=>rej(tx.error); }); }
+async function idbGet(k){ const d = await idb(); return new Promise((res,rej)=>{ const rq=d.transaction('files','readonly').objectStore('files').get(k); rq.onsuccess=()=>res(rq.result); rq.onerror=()=>rej(rq.error); }); }
+async function idbDel(k){ const d = await idb(); return new Promise((res,rej)=>{ const tx=d.transaction('files','readwrite'); tx.objectStore('files').delete(k); tx.oncomplete=()=>res(); tx.onerror=()=>rej(tx.error); }); }
+async function loadCustomHimno(){
+  try{
+    const blob = await idbGet('himno');
+    if(blob && blob.size){
+      customHimno = { url: URL.createObjectURL(blob), name: blob.name || 'audio' };
+      const a = document.getElementById('anthem');
+      if(a){ a.src = customHimno.url; a.load(); }
+    }
+  }catch(e){}
+  render();
+}
+async function setCustomHimno(file){
+  if(!file) return;
+  if(file.size > 60*1024*1024){ alert('El archivo es muy grande (máx 60 MB). Probá con un mp3.'); return; }
+  try{ await idbSet('himno', file); await loadCustomHimno(); alert('Himno guardado en este dispositivo.'); }
+  catch(e){ alert('No se pudo guardar el audio.'); }
+}
+async function clearCustomHimno(){
+  if(!confirm('¿Quitar el himno personalizado de este dispositivo?')) return;
+  try{ await idbDel('himno'); }catch(e){}
+  const a = document.getElementById('anthem'); if(a){ a.pause(); a.src = 'himno.mp3'; }
+  customHimno = null; render();
+}
+function toggleHimnoSound(){
+  const a = document.getElementById('anthem');
+  const b = document.getElementById('music-btn');
+  if(customHimno && customHimno.url && a){
+    if(a.paused){
+      a.volume = 1;
+      a.play().then(()=>{ if(b){ b.classList.add('playing'); b.textContent='Parar'; } })
+        .catch(()=>alert('No se pudo reproducir el audio.'));
+    } else {
+      a.pause(); if(b){ b.classList.remove('playing'); b.textContent='Himno'; }
+    }
+    return;
+  }
+  toggleHimno();
+}
+
 /* ---------- Efectos 8-bit (Web Audio, originales) ---------- */
 let sfxOn = localStorage.getItem('pmfc_sfx') !== 'off';
 let actx = null;
@@ -1442,7 +1499,8 @@ document.addEventListener('click', e=>{
     case 'cloud-change': changeFbConfig(); break;
     case 'cloud-help': openCloudHelp(); break;
     case 'toggle-sfx': toggleSfx(); break;
-    case 'toggle-music': toggleHimno(); break;
+    case 'toggle-music': toggleHimnoSound(); break;
+    case 'himno-clear': clearCustomHimno(); break;
   }
 });
 document.addEventListener('change', e=>{
@@ -1451,6 +1509,7 @@ document.addEventListener('change', e=>{
     if(w) w.style.display = e.target.value==='rival' ? 'block' : 'none';
   }
   if(e.target.id==='esc-match'){ escabioMatchId = e.target.value; render(); }
+  if(e.target.id==='himno-file'){ const f = e.target.files && e.target.files[0]; if(f) setCustomHimno(f); }
   if(e.target.id==='mvp-select'){
     const m = data.matches.find(x=>x.id===currentMatchId);
     if(m){ m.mvpId = e.target.value || null; sfx('mvp'); save(); persistMatch(m); }
@@ -1461,6 +1520,7 @@ updateSfxBtn();
 updateHimnoBtn();
 render();
 initCloud();
+loadCustomHimno();
 </script>
 </body>
 </html>
