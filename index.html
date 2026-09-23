@@ -317,8 +317,6 @@
 <div id="modal-root"></div>
 <audio id="anthem" src="himno.mp3" loop preload="none"></audio>
 
-<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
 <script>
 const KEY = 'pielmorenafc_v1';
 let data = load();
@@ -339,13 +337,6 @@ function save(){ localStorage.setItem(KEY, JSON.stringify(data)); }
 
 /* ---------- Nube (Firebase / Firestore) ---------- */
 const FBCFG_KEY = 'pielmorenafc_fbconfig';
-let fbConfig = loadFbConfig();
-let db = null;
-let cloudStarted = false;
-let cloudState = { status:'unset', message:'' };
-let bootLocal = { players:[], matches:[] };
-let gotPlayers = false, gotMatches = false, cloudWasEmpty = false;
-
 const DEFAULT_FB_CONFIG = {
   apiKey: "AIzaSyCwWiw-_4CSzSv5jXeHYd9eHwzOoUrssOQ",
   authDomain: "piel-morena-fc.firebaseapp.com",
@@ -354,6 +345,14 @@ const DEFAULT_FB_CONFIG = {
   messagingSenderId: "198605126708",
   appId: "1:198605126708:web:d3c0f2de78e18041e01e61"
 };
+let fbConfig = loadFbConfig();
+let db = null;
+let cloudStarted = false;
+let cloudStarting = false;
+let cloudState = { status:'unset', message:'' };
+let bootLocal = { players:[], matches:[] };
+let gotPlayers = false, gotMatches = false, cloudWasEmpty = false;
+
 function loadFbConfig(){
   try{ const c = JSON.parse(localStorage.getItem(FBCFG_KEY)); if(c && c.projectId) return c; }catch(e){}
   return DEFAULT_FB_CONFIG;
@@ -386,11 +385,33 @@ function changeFbConfig(){
   initCloud(); render();
 }
 
-function initCloud(){
+function loadScript(src){
+  return new Promise((res, rej)=>{
+    const s = document.createElement('script');
+    s.src = src; s.onload = res; s.onerror = ()=>rej(new Error('No cargó ' + src));
+    document.head.appendChild(s);
+  });
+}
+async function ensureFirebase(){
+  if(typeof firebase !== 'undefined') return true;
+  if(!window.__fbLoading){
+    window.__fbLoading = (async()=>{
+      await loadScript('https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js');
+      await loadScript('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js');
+    })();
+  }
+  try{ await window.__fbLoading; return typeof firebase !== 'undefined'; }
+  catch(e){ window.__fbLoading = null; return false; }
+}
+async function initCloud(){
   if(!cloudConfigured()){ cloudState = { status:'unset', message:'' }; renderCloudStatus(); return; }
-  if(cloudStarted) return;
-  if(typeof firebase === 'undefined'){
-    cloudState = { status:'error', message:'No se pudo cargar el SDK de Firebase.' };
+  if(cloudStarted || cloudStarting) return;
+  cloudStarting = true;
+  cloudState = { status:'syncing', message:'Conectando...' }; renderCloudStatus();
+  const ok = await ensureFirebase();
+  if(!ok){
+    cloudStarting = false;
+    cloudState = { status:'error', message:'No se pudo cargar Firebase (revisá la conexión).' };
     renderCloudStatus(); return;
   }
   try{
@@ -399,7 +420,6 @@ function initCloud(){
     cloudStarted = true;
     bootLocal = cloneLocal();
     gotPlayers = gotMatches = cloudWasEmpty = false;
-    cloudState = { status:'syncing', message:'Conectando...' }; renderCloudStatus();
 
     db.collection('players').onSnapshot(snap=>{
       data.players = snap.docs.map(d=>d.data());
@@ -416,6 +436,7 @@ function initCloud(){
     cloudState = { status:'error', message:'Error al iniciar Firebase: ' + e.message };
     renderCloudStatus();
   }
+  cloudStarting = false;
 }
 function afterSnapshot(){
   localStorage.setItem(KEY, JSON.stringify(data));
