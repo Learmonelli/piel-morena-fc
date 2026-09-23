@@ -163,7 +163,30 @@
   .table tr:first-child td .rk{color:var(--gold)}
   .rk{font-weight:800;color:var(--muted);font-size:12px}
   .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
-  .table-wrap .table{min-width:520px}
+  .table-wrap .table{min-width:600px}
+
+  /* Ranking */
+  .cat-pills{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+  .cat-pill{background:transparent;border:2px solid var(--line);color:var(--muted);border-radius:20px;
+    padding:5px 12px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
+  .cat-pill.on{background:var(--gold);border-color:var(--gold);color:#2a1706}
+  .podium{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;align-items:end}
+  .podium-item{background:#320d18;border:2px solid var(--line);border-radius:12px;padding:10px 6px;
+    text-align:center;position:relative}
+  .podium-item.p1{border-color:var(--gold);box-shadow:0 0 0 2px rgba(242,183,5,.25)}
+  .podium-item.p2{border-color:#cfd8dc}
+  .podium-item.p3{border-color:#c98a4b}
+  .podium-item .medal{position:absolute;top:6px;left:7px;font-weight:800;font-size:12px;color:var(--muted)}
+  .podium-item .pixel-avatar{margin:6px auto 0;width:48px;height:48px}
+  .podium-name{display:block;font-size:12px;font-weight:700;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .podium-val{display:block;font-size:22px;font-weight:800;color:var(--gold);line-height:1.1}
+  .podium-cat{display:block;font-size:9px;text-transform:uppercase;color:var(--muted);letter-spacing:.4px}
+  .rank-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(74,33,48,.55)}
+  .rank-row:last-child{border-bottom:0}
+  .rank-pos{width:24px;text-align:center;font-weight:800;color:var(--muted);font-size:13px;flex:0 0 auto}
+  .rank-name{flex:1;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .rank-sub{color:var(--muted);font-size:11px}
+  .rank-val{font-weight:800;font-size:18px;color:var(--gold)}
   .clickable{cursor:pointer}
   .win{color:#bfe08a}
   .loss{color:#ff9a9d}
@@ -325,6 +348,7 @@ let currentMatchId = null;
 let currentPlayerId = null;
 let playerBackView = 'jugadores';
 let newFace = null;
+let rankCat = 'goles';
 
 function load(){
   try{
@@ -698,6 +722,15 @@ function matchDetailHTML(){
     ? `<select id="mvp-select"><option value="">Sin definir</option>${mvpOpts}</select>`
     : `<p class="muted">Asigná jugadores primero.</p>`;
 
+  const escabioIds = m.escabio || [];
+  const escabioList = played.filter(id=>getPlayer(id)).map(id=>{
+    const on = escabioIds.includes(id);
+    return `<div class="assign-row">
+      <span class="pname">${playerAvatar(getPlayer(id),26)}${esc(pname(id))}</span>
+      <button class="sidebtn ${on?'on':''}" data-action="toggle-escabio" data-id="${id}">${on?'Tomó':'—'}</button>
+    </div>`;
+  }).join('') || '<p class="muted">Asigná jugadores primero.</p>';
+
   return `
     <button class="btn ghost sm" data-action="back" style="margin-bottom:14px">← Volver</button>
     <div class="card">
@@ -724,6 +757,11 @@ function matchDetailHTML(){
     </div>
 
     <div class="card">
+      <h3>Escabio tomado <span class="hint">· ${escabioIds.length}</span></h3>
+      ${escabioList}
+    </div>
+
+    <div class="card">
       <h3>${isRival?'Quiénes juegan':'Armar los equipos'}
         <span class="hint">· A: ${m.teamA.length}${isRival?'':' · B: '+m.teamB.length}</span></h3>
       ${assign}
@@ -736,7 +774,7 @@ function matchDetailHTML(){
 /* ---------- Estadísticas ---------- */
 function computeStats(){
   const st = {};
-  data.players.forEach(p=> st[p.id]={pj:0,goles:0,asist:0,mvp:0,v:0,d:0,e:0});
+  data.players.forEach(p=> st[p.id]={pj:0,goles:0,asist:0,mvp:0,v:0,d:0,e:0,escabio:0});
   data.matches.forEach(m=>{
     const a = scoreOf(m,'A'), b = scoreOf(m,'B');
     const resA = a>b ? 'v' : a<b ? 'd' : 'e';
@@ -748,13 +786,54 @@ function computeStats(){
       if(ev.assistId && st[ev.assistId]) st[ev.assistId].asist++;
     });
     if(m.mvpId && st[m.mvpId]) st[m.mvpId].mvp++;
+    (m.escabio||[]).forEach(id=>{ if(st[id]) st[id].escabio++; });
   });
   return st;
 }
+function rankCats(){
+  return {
+    goles:  ['Goles',            s=>s.goles],
+    asist:  ['Asistencias',      s=>s.asist],
+    ga:     ['Goles + Asist.',   s=>s.goles+s.asist],
+    mvp:    ['Figuras',          s=>s.mvp],
+    pj:     ['Partidos jugados', s=>s.pj],
+    v:      ['Victorias',        s=>s.v],
+    d:      ['Derrotas',         s=>s.d],
+    escabio:['Escabio',          s=>s.escabio]
+  };
+}
+function rankingHTML(){
+  const cats = rankCats();
+  const st = computeStats();
+  const [label, fn] = cats[rankCat] || cats.goles;
+  const rows = data.players.map(p=>({p, s:st[p.id]}))
+    .filter(r=> fn(r.s) > 0)
+    .sort((x,y)=> fn(y.s)-fn(x.s) || y.s.goles-x.s.goles || y.s.asist-x.s.asist || x.p.name.localeCompare(y.p.name));
+  const pills = Object.keys(cats).map(k=>`<button class="cat-pill ${rankCat===k?'on':''}" data-action="rank-cat" data-cat="${k}">${esc(cats[k][0])}</button>`).join('');
+  const head = `<div class="section-head"><h2>Ranking</h2></div><div class="cat-pills">${pills}</div>`;
+  if(!rows.length) return `<div class="card">${head}<p class="muted">Sin datos todavía.</p></div>`;
+  const pod = rows.slice(0,3).map((r,i)=>`
+    <div class="podium-item p${i+1}">
+      <span class="medal">${i+1}°</span>
+      ${playerAvatar(r.p,54)}
+      <span class="podium-name">${esc(pname(r.p.id))}</span>
+      <span class="podium-val">${fn(r.s)}</span>
+      <span class="podium-cat">${esc(label)}</span>
+    </div>`).join('');
+  const rest = rows.map((r,i)=>`
+    <div class="rank-row clickable" data-action="open-player" data-id="${r.p.id}">
+      <span class="rank-pos">${i+1}</span>
+      ${playerAvatar(r.p,30)}
+      <span class="rank-name">${esc(r.p.name)} <span class="rank-sub">· ${r.s.pj} PJ</span></span>
+      <span class="rank-val">${fn(r.s)}</span>
+    </div>`).join('');
+  return `<div class="card">${head}<div class="podium">${pod}</div><div class="rank-list">${rest}</div></div>`;
+}
+
 function statsHTML(){
   const st = computeStats();
   const rows = data.players.map(p=>({p, s:st[p.id]}))
-    .filter(r=> r.s.pj || r.s.goles || r.s.asist || r.s.mvp)
+    .filter(r=> r.s.pj || r.s.goles || r.s.asist || r.s.mvp || r.s.escabio)
     .sort((x,y)=> y.s.goles-x.s.goles || y.s.asist-x.s.asist || y.s.v-x.s.v || x.p.name.localeCompare(y.p.name));
   const head = `<div class="section-head"><h2>Estadísticas</h2></div>`;
   if(!rows.length){
@@ -777,26 +856,27 @@ function statsHTML(){
     <td class="c win">${r.s.v||''}</td>
     <td class="c">${r.s.e||''}</td>
     <td class="c loss">${r.s.d||''}</td>
+    <td class="c">${r.s.escabio||''}</td>
     <td class="c">${r.s.mvp||''}</td>
   </tr>`).join('');
-  return head + summary + `<div class="card"><div class="table-wrap"><table class="table">
-    <thead><tr><th class="c">#</th><th>Jugador</th><th class="c">PJ</th><th class="c">G</th><th class="c">A</th><th class="c">V</th><th class="c">E</th><th class="c">D</th><th class="c">MVP</th></tr></thead>
+  return head + rankingHTML() + summary + `<div class="card"><div class="table-wrap"><table class="table">
+    <thead><tr><th class="c">#</th><th>Jugador</th><th class="c">PJ</th><th class="c">G</th><th class="c">A</th><th class="c">V</th><th class="c">E</th><th class="c">D</th><th class="c">Esc</th><th class="c">MVP</th></tr></thead>
     <tbody>${body}</tbody>
   </table></div></div>
-  <p class="muted" style="text-align:center">PJ: jugados · G: goles · A: asistencias · V: ganados · E: empatados · D: perdidos · MVP: figura</p>`;
+  <p class="muted" style="text-align:center">PJ: jugados · G: goles · A: asistencias · V: ganados · E: empatados · D: perdidos · Esc: escabios · MVP: figura</p>`;
 }
 
 /* ---------- Ficha de jugador ---------- */
 function playerDetailHTML(){
   const p = getPlayer(currentPlayerId);
   if(!p){ currentPlayerId=null; view=playerBackView; return view==='estadisticas'?statsHTML():jugadoresHTML(); }
-  const s = computeStats()[p.id] || {pj:0,goles:0,asist:0,mvp:0,v:0,d:0,e:0};
+  const s = computeStats()[p.id] || {pj:0,goles:0,asist:0,mvp:0,v:0,d:0,e:0,escabio:0};
   const played = data.matches
     .filter(m=>(m.teamA||[]).includes(p.id) || (m.teamB||[]).includes(p.id))
     .sort((a,b)=>(a.date||'').localeCompare(b.date||''));
 
   const tiles = [['PJ',s.pj,''],['V',s.v,'win'],['E',s.e,''],['D',s.d,'loss'],
-                 ['Goles',s.goles,''],['Asist.',s.asist,''],['Figura',s.mvp,'gold']]
+                 ['Goles',s.goles,''],['Asist.',s.asist,''],['Escabio',s.escabio,'gold'],['Figura',s.mvp,'gold']]
     .map(([l,v,c])=>`<div class="tile"><span class="tile-num ${c}">${v}</span><span class="tile-lbl">${l}</span></div>`).join('');
 
   const log = played.length ? played.map(m=>{
@@ -998,6 +1078,13 @@ function toggleTeam(pid, side){
   else { const j=other.indexOf(pid); if(j>=0) other.splice(j,1); arr.push(pid); }
   save(); persistMatch(m); render();
 }
+function toggleEscabio(pid){
+  const m = data.matches.find(x=>x.id===currentMatchId); if(!m) return;
+  if(!m.escabio) m.escabio = [];
+  const i = m.escabio.indexOf(pid);
+  if(i>=0) m.escabio.splice(i,1); else m.escabio.push(pid);
+  save(); persistMatch(m); render();
+}
 function confirmGoal(){
   const m = data.matches.find(x=>x.id===currentMatchId); if(!m) return;
   const side = $('#g-side').value;
@@ -1120,6 +1207,8 @@ document.addEventListener('click', e=>{
     case 'open-player': playerBackView = view; currentPlayerId = id; view='jugador'; render(); break;
     case 'player-back': view = playerBackView; currentPlayerId = null; render(); break;
     case 'toggle-team': toggleTeam(id, t.dataset.side); break;
+    case 'toggle-escabio': toggleEscabio(id); break;
+    case 'rank-cat': rankCat = t.dataset.cat; render(); break;
     case 'add-goal': openAddGoal(t.dataset.side); break;
     case 'confirm-goal': confirmGoal(); break;
     case 'del-goal': delGoal(id); break;
