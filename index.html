@@ -388,6 +388,7 @@ let newFace = null;
 let rankCat = 'racha';
 let escabioMatchId = null;
 let commentName = localStorage.getItem('pmfc_name') || '';
+let playerEditMode = false;
 
 function load(){
   try{
@@ -948,6 +949,29 @@ function statsHTML(){
 function playerDetailHTML(){
   const p = getPlayer(currentPlayerId);
   if(!p){ currentPlayerId=null; view=playerBackView; return view==='estadisticas'?statsHTML():jugadoresHTML(); }
+  if(playerEditMode){
+    if(!newFace) newFace = Object.assign({}, p.face || randomFace());
+    return `
+      <button class="btn ghost sm" data-action="cancel-edit" style="margin-bottom:14px">← Volver</button>
+      <div class="card">
+        <h3>Editar jugador</h3>
+        <label>Nombre y apellido<input id="e-name" type="text" value="${esc(p.name)}" autocomplete="off"></label>
+        <div class="grid2">
+          <label>Apodo <span class="hint">(opcional)</span><input id="e-nick" type="text" value="${esc(p.nickname||'')}" autocomplete="off"></label>
+          <label>Dorsal <span class="hint">(opcional)</span><input id="e-num" type="text" value="${esc(p.number||'')}" inputmode="numeric" autocomplete="off"></label>
+        </div>
+        <label>Posición
+          <select id="e-pos">
+            ${['','Arquero','Defensor','Mediocampista','Delantero'].map(o=>`<option value="${o}" ${(p.position||'')===o?'selected':''}>${o||'Sin definir'}</option>`).join('')}
+          </select>
+        </label>
+        ${faceEditorHTML()}
+        <div class="grid2">
+          <button class="btn ghost" data-action="cancel-edit">Cancelar</button>
+          <button class="btn primary" data-action="save-player">Guardar</button>
+        </div>
+      </div>`;
+  }
   const s = computeStats()[p.id] || {pj:0,goles:0,asist:0,mvp:0,v:0,d:0,e:0,escabio:0};
   const played = data.matches
     .filter(m=>(m.teamA||[]).includes(p.id) || (m.teamB||[]).includes(p.id))
@@ -979,7 +1003,10 @@ function playerDetailHTML(){
   }).join('') : '<p class="muted">Todavía no jugó partidos.</p>';
 
   return `
-    <button class="btn ghost sm" data-action="player-back" style="margin-bottom:14px">← Volver</button>
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <button class="btn ghost sm" data-action="player-back">← Volver</button>
+      <button class="btn ghost sm" data-action="edit-player">Editar</button>
+    </div>
     <div class="card">
       <div class="profile-top">
         ${playerAvatar(p,72)}
@@ -1003,6 +1030,21 @@ function playerDetailHTML(){
 /* ---------- Jugadores ---------- */
 function swatch(key, i, color){
   return `<button type="button" class="swatch ${newFace[key]===i?'on':''}" style="background:${color}" data-action="face-set" data-key="${key}" data-val="${i}" aria-label="${key} ${i}"></button>`;
+}
+function faceEditorHTML(){
+  return `<div class="face-editor">
+    <div class="face-preview" id="face-preview">${avatarSVG('new-face',64,newFace)}</div>
+    <div class="face-controls">
+      <div class="face-row"><span class="face-lbl">Piel</span>${AV_SKIN.map((c,i)=>swatch('skin',i,c)).join('')}</div>
+      <div class="face-row"><span class="face-lbl">Pelo</span>${AV_HAIR.map((c,i)=>swatch('hair',i,c)).join('')}</div>
+      <div class="face-row"><span class="face-lbl">Camiseta</span>${AV_SHIRT.map((c,i)=>swatch('shirt',i,c)).join('')}</div>
+      <div class="face-row"><span class="face-lbl">Corte</span>
+        ${[['Corto',0],['Medio',1],['Largo',2],['Pelado',3]].map(([l,v])=>`<button type="button" class="face-pill ${newFace.style===v?'on':''}" data-action="face-set" data-key="style" data-val="${v}">${l}</button>`).join('')}
+        <button type="button" class="face-pill ${newFace.beard?'on':''}" data-action="face-set" data-key="beard" data-val="1">Barba</button>
+      </div>
+    </div>
+    <button class="btn ghost sm" data-action="face-random">Aleatorio</button>
+  </div>`;
 }
 function jugadoresHTML(){
   if(!newFace) newFace = randomFace();
@@ -1034,19 +1076,7 @@ function jugadoresHTML(){
           <option>Delantero</option>
         </select>
       </label>
-      <div class="face-editor">
-        <div class="face-preview" id="face-preview">${avatarSVG('new-face',64,newFace)}</div>
-        <div class="face-controls">
-          <div class="face-row"><span class="face-lbl">Piel</span>${AV_SKIN.map((c,i)=>swatch('skin',i,c)).join('')}</div>
-          <div class="face-row"><span class="face-lbl">Pelo</span>${AV_HAIR.map((c,i)=>swatch('hair',i,c)).join('')}</div>
-          <div class="face-row"><span class="face-lbl">Camiseta</span>${AV_SHIRT.map((c,i)=>swatch('shirt',i,c)).join('')}</div>
-          <div class="face-row"><span class="face-lbl">Corte</span>
-            ${[['Corto',0],['Medio',1],['Largo',2],['Pelado',3]].map(([l,v])=>`<button type="button" class="face-pill ${newFace.style===v?'on':''}" data-action="face-set" data-key="style" data-val="${v}">${l}</button>`).join('')}
-            <button type="button" class="face-pill ${newFace.beard?'on':''}" data-action="face-set" data-key="beard" data-val="1">Barba</button>
-          </div>
-        </div>
-        <button class="btn ghost sm" data-action="face-random">Aleatorio</button>
-      </div>
+      ${faceEditorHTML()}
       <button class="btn primary block" data-action="add-player">Agregar al plantel</button>
     </div>
 
@@ -1235,6 +1265,19 @@ function addPlayer(){
   };
   data.players.push(p);
   newFace = null;
+  save(); persistPlayer(p); render();
+}
+function savePlayer(){
+  const p = getPlayer(currentPlayerId); if(!p) return;
+  const name = document.getElementById('e-name').value.trim();
+  if(!name){ alert('Poné al menos el nombre.'); return; }
+  p.name = name;
+  p.nickname = document.getElementById('e-nick').value.trim();
+  p.number = document.getElementById('e-num').value.trim();
+  p.position = document.getElementById('e-pos').value;
+  p.face = Object.assign({}, newFace);
+  newFace = null;
+  playerEditMode = false;
   save(); persistPlayer(p); render();
 }
 function updateFacePreview(){
@@ -1468,8 +1511,11 @@ document.addEventListener('click', e=>{
       break;
     }
     case 'face-random': newFace = randomFace(); updateFacePreview(); break;
-    case 'open-player': playerBackView = view; currentPlayerId = id; view='jugador'; render(); break;
-    case 'player-back': view = playerBackView; currentPlayerId = null; render(); break;
+    case 'open-player': playerBackView = view; currentPlayerId = id; playerEditMode = false; view='jugador'; render(); break;
+    case 'player-back': playerEditMode = false; newFace = null; view = playerBackView; currentPlayerId = null; render(); break;
+    case 'edit-player': { const p = getPlayer(currentPlayerId); if(!p) break; newFace = Object.assign({}, p.face || randomFace()); playerEditMode = true; render(); break; }
+    case 'cancel-edit': playerEditMode = false; newFace = null; render(); break;
+    case 'save-player': savePlayer(); break;
     case 'toggle-team': toggleTeam(id, t.dataset.side); break;
     case 'esc-inc': escAdjust(id, 1); break;
     case 'esc-dec': escAdjust(id, -1); break;
