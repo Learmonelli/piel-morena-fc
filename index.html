@@ -853,6 +853,7 @@ function rankCats(){
     pj:     ['Partidos jugados', s=>s.pj],
     v:      ['Victorias',        s=>s.v],
     d:      ['Derrotas',         s=>s.d],
+    invicto:['Invictos',         s=>s.v+s.e],
     escabio:['Escabio',          s=>s.escabio]
   };
 }
@@ -929,8 +930,18 @@ function playerDetailHTML(){
     .filter(m=>(m.teamA||[]).includes(p.id) || (m.teamB||[]).includes(p.id))
     .sort((a,b)=>(a.date||'').localeCompare(b.date||''));
 
+  const invictos = s.v + s.e;
+  let racha = 0;
+  for(let i = played.length - 1; i >= 0; i--){
+    const mm = played[i];
+    const sd = (mm.teamA||[]).includes(p.id) ? 'A' : 'B';
+    const my = sd==='A' ? scoreOf(mm,'A') : scoreOf(mm,'B');
+    const op = sd==='A' ? scoreOf(mm,'B') : scoreOf(mm,'A');
+    if(my >= op) racha++; else break;
+  }
   const tiles = [['PJ',s.pj,''],['V',s.v,'win'],['E',s.e,''],['D',s.d,'loss'],
-                 ['Goles',s.goles,''],['Asist.',s.asist,''],['Escabio',s.escabio,'gold'],['Figura',s.mvp,'gold']]
+                 ['Invictos',invictos,'win'],['Goles',s.goles,''],['Asist.',s.asist,''],['Figura',s.mvp,'gold'],
+                 ['Escabio',s.escabio,'gold']]
     .map(([l,v,c])=>`<div class="tile"><span class="tile-num ${c}">${v}</span><span class="tile-lbl">${l}</span></div>`).join('');
 
   const log = played.length ? played.map(m=>{
@@ -965,6 +976,7 @@ function playerDetailHTML(){
         </div>
       </div>
       <div class="tiles">${tiles}</div>
+      ${racha>0?`<p class="muted" style="text-align:center;margin:12px 0 0">Racha invicta actual: <b>${racha}</b> partido${racha===1?'':'s'}</p>`:''}
     </div>
     <div class="card"><h3>Partido a partido</h3>${log}</div>
   `;
