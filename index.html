@@ -1313,31 +1313,48 @@ function hkick(t, vol){
   o.connect(g); g.connect(c.destination); o.start(t); o.stop(t + 0.2);
   himnoOsc.push(o);
 }
+function htom(t, f0, f1, vol, dur){
+  const c = ac(); if(!c) return;
+  const o = c.createOscillator(), g = c.createGain();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(f0, t);
+  o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(c.destination); o.start(t); o.stop(t + dur + 0.02);
+  himnoOsc.push(o);
+}
+const HIMNO_BEAT = 0.55;
+// Himno "latino" (cumbia 8-bit, composicion original) - Am F C G
 const HIMNO_MEL = [
-  ['C6',0,.5],['B5',.5,.5],['A5',1,.5],['G5',1.5,.5],['E5',2,1],['G5',3,1],
-  ['A5',4,.5],['G5',4.5,.5],['F5',5,.5],['E5',5.5,.5],['D5',6,2],
-  ['E5',8,.5],['F5',8.5,.5],['G5',9,.5],['A5',9.5,.5],['C6',10,2],
-  ['B5',12,.5],['A5',12.5,.5],['G5',13,1],['G5',14,.5],['E5',14.5,.5],['C5',15,1]
+  ['A4',0,.5],['C5',.5,.5],['E5',1,.5],['A5',1.5,.5],['G5',2,1],['E5',3,1],
+  ['F5',4,.5],['A5',4.5,.5],['G5',5,.5],['F5',5.5,.5],['E5',6,2],
+  ['E5',8,.5],['G5',8.5,.5],['C6',9,.5],['B5',9.5,.5],['A5',10,1],['G5',11,1],
+  ['D5',12,.5],['F5',12.5,.5],['E5',13,.5],['D5',13.5,.5],['E5',14,1],['A5',15,1]
 ];
-const HIMNO_BASS = [
-  ['C3',0,2],['C3',2,2],['G2',4,2],['G2',6,2],
-  ['A2',8,2],['A2',10,2],['F2',12,2],['G2',14,2]
-];
+const HIMNO_BARS = [['A2','E3'],['F2','C3'],['C3','G3'],['G2','D3']];
 function himnoOnce(t0){
   himnoOsc = [];
-  const beat = 0.42;
-  HIMNO_MEL.forEach(([n,s,l])=> hnote(n, t0+s*beat, l*beat*0.92, 'square', 0.12));
-  HIMNO_BASS.forEach(([n,s,l])=> hnote(n, t0+s*beat, l*beat*0.95, 'triangle', 0.17));
-  for(let b=0;b<16;b+=2) hkick(t0+b*beat, 0.5);
-  for(let b=1;b<16;b+=2) hnoise(t0+b*beat, 0.12, 0.16, 1200);
-  for(let b=0;b<16;b+=0.5) hnoise(t0+b*beat+0.02, 0.03, 0.05, 6000);
+  const beat = HIMNO_BEAT;
+  HIMNO_MEL.forEach(([n,s,l])=> hnote(n, t0+s*beat, l*beat*0.9, 'square', 0.11));
+  // tumbao: bajo en corcheas alternando raiz y quinta
+  HIMNO_BARS.forEach(([root,fifth], bi)=>{
+    for(let e=0; e<8; e++){
+      hnote(e%2===0 ? root : fifth, t0 + bi*4*beat + e*0.5*beat, 0.5*beat*0.85, 'triangle', 0.16);
+    }
+  });
+  // percusion tropical
+  for(let b=0;b<16;b+=2) hkick(t0 + b*beat, 0.42);                          // bombo
+  for(let b=1;b<16;b+=2) hnoise(t0 + b*beat, 0.09, 0.13, 1600);             // palma/rim
+  for(let i=0;i<64;i++) hnoise(t0 + i*0.25*beat, 0.02, i%4===2 ? 0.055 : 0.03, 5500); // guira 16avos
+  for(let b=0;b<16;b++) htom(t0 + (b+0.5)*beat, 220, 150, 0.13, 0.10);      // tom en contratiempo
 }
 function toggleHimno(){
   if(himnoOn){ stopHimno(); return; }
   const c = ac(); if(!c) return;
   if(c.state === 'suspended') c.resume();
   himnoOn = true; updateHimnoBtn();
-  const beat = 0.42, loopDur = 16*beat;
+  const loopDur = 16*HIMNO_BEAT;
   let start = c.currentTime + 0.08;
   const step = ()=>{
     if(!himnoOn) return;
