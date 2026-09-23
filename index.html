@@ -372,19 +372,25 @@ function avatarSVG(seed, size, face){
 
   // pelo con volumen (arriba, un poco mas ancho)
   for(let y=0;y<N;y++) for(let x=0;x<N;x++)
-    if(y <= 5 && inE(x,y,RX+1,RY+1)) g[y][x] = 'H';
+    if(y <= 6 && inE(x,y,RX+1,RY+1)) g[y][x] = 'H';
 
   // cara con sombreado lateral
   for(let y=0;y<N;y++) for(let x=0;x<N;x++)
     if(inE(x,y,RX,RY)) g[y][x] = x >= 10 ? 'd' : (x <= 4 ? 'L' : 'S');
 
-  // linea de pelo segun estilo (corto / medio / bajo)
-  const hairline = [5,4,3][style];
+  // linea de pelo segun estilo (corto / medio / largo)
+  const hairline = [5,6,6][style];
   for(let y=0;y<N;y++) for(let x=0;x<N;x++)
     if(g[y][x] !== '.' && g[y][x] !== 'H' && y <= hairline) g[y][x] = 'H';
 
-  // patillas
+  // pelo a los costados segun el largo
+  const sideBottom = [7,9,11][style];
+  for(let y=5;y<=sideBottom;y++){ g[y][2] = 'H'; g[y][13] = 'H'; }
   g[6][3] = 'H'; g[6][12] = 'H';
+
+  // brillo en la punta del pelo
+  for(let y=0;y<N;y++) for(let x=0;x<N;x++)
+    if(g[y][x] === 'H' && (!g[y-1] || g[y-1][x] === '.')) g[y][x] = 'l';
 
   // rasgos
   g[6][4] = 'B'; g[6][5] = 'B'; g[6][10] = 'B'; g[6][11] = 'B';   // cejas
@@ -421,7 +427,7 @@ function avatarSVG(seed, size, face){
   }
 
   const colMap = {
-    'H':HAIR, 'h':shade(HAIR,0.7), 'B':'#141210',
+    'H':HAIR, 'h':shade(HAIR,0.7), 'l':shade(HAIR,1.5), 'B':'#141210',
     'S':SKIN, 'd':shade(SKIN,0.78), 'L':shade(SKIN,1.13),
     'E':'#f4fbff', 'P':'#1a1a1a', 'M':shade(SKIN,0.5),
     'C':SHIRT, 'c':shade(SHIRT,0.78), 'K':K,
