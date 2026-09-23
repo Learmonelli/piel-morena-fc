@@ -37,13 +37,19 @@
     background:radial-gradient(120% 80% at 50% 0%,transparent 30%,rgba(21,10,14,.55) 100%)}
 
   /* Header */
-  .app-header{padding:22px 0 14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .app-header{padding:22px 0 14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;column-gap:10px;row-gap:8px}
+  .brand{flex:1 1 170px;min-width:0}
   .music-btn{background:#330f1c;border:1px solid var(--line);color:var(--gold);
     border-radius:12px;padding:10px 14px;cursor:pointer;font-family:inherit;
     font-weight:700;font-size:13px;transition:.15s;white-space:nowrap}
   .music-btn.playing{background:linear-gradient(145deg,#ffd23f,var(--gold-d));color:#2a1706;border-color:var(--gold)}
-  .header-btns{display:flex;gap:6px;flex:0 0 auto}
+  .header-btns{display:flex;gap:6px;flex:0 0 auto;margin-left:auto}
   .header-btns .music-btn{padding:10px 10px;font-size:12px}
+  @media (max-width:430px){
+    .brand h1{font-size:10px}
+    .brand p{font-size:13px}
+    .header-btns .music-btn{padding:9px 8px;font-size:11px}
+  }
   .brand{display:flex;align-items:center;gap:12px}
   .crest{width:52px;height:58px;flex:0 0 auto;
     filter:drop-shadow(0 6px 14px rgba(0,0,0,.5))}
