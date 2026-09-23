@@ -93,6 +93,7 @@
   .tag{font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px}
   .tag.mvp{background:rgba(106,44,145,.28);color:#d9b6ef}
   .tag.hachazo{background:rgba(229,72,77,.2);color:#ff9a9d}
+  .tag.polemica{background:rgba(242,183,5,.18);color:var(--gold)}
   .tags{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
   .match-title{font-size:15px;font-weight:700;margin-bottom:10px}
   .score{display:flex;align-items:center;justify-content:center;gap:14px;
@@ -571,8 +572,6 @@ function migMap(map){
 function escQty(m, id){ return qtyOf(m.escabio, id); }
 function migEsc(m){ return migMap(m.escabio); }
 function escTotal(m){ return totalOf(m.escabio); }
-function patQty(m, id){ return qtyOf(m.patadas, id); }
-function patTotal(m){ return totalOf(m.patadas); }
 
 /* ---------- Avatar pixel art (16-bit) ---------- */
 function hashStr(s){
@@ -717,8 +716,9 @@ function partidosHTML(){
                               : `${esc(m.teamAName)} vs ${esc(m.teamBName)}`;
     const mvp = m.mvpId ? `<span class="tag mvp">Figura: ${esc(pname(m.mvpId))}</span>` : '';
     const hach = m.hachazoId ? `<span class="tag hachazo">Hachazo: ${esc(pname(m.hachazoId))}</span>` : '';
+    const pol = m.polemicaId ? `<span class="tag polemica">Polémica: ${esc(pname(m.polemicaId))}</span>` : '';
     return `<article class="card match-card" data-action="open-match" data-id="${m.id}">
-      <div class="match-top"><span class="date">${fmtDate(m.date)}</span><span class="tags">${mvp}${hach}</span></div>
+      <div class="match-top"><span class="date">${fmtDate(m.date)}</span><span class="tags">${mvp}${hach}${pol}</span></div>
       <div class="match-title">${title}</div>
       <div class="score"><b>${a}</b><span>-</span><b>${b}</b></div>
     </article>`;
@@ -746,6 +746,15 @@ function escabioPostHTML(){
     </div>`;
   }).join('') || '<p class="muted">Ese partido no tiene jugadores asignados.</p>';
 
+  const hachOpts = played.map(id=>`<option value="${id}" ${m.hachazoId===id?'selected':''}>${esc(pname(id))}</option>`).join('');
+  const hachSelect = played.length
+    ? `<select id="hachazo-select"><option value="">Sin definir</option>${hachOpts}</select>`
+    : '<p class="muted">Sin jugadores asignados.</p>';
+  const polOpts = played.map(id=>`<option value="${id}" ${m.polemicaId===id?'selected':''}>${esc(pname(id))}</option>`).join('');
+  const polSelect = played.length
+    ? `<select id="polemica-select"><option value="">Sin definir</option>${polOpts}</select>`
+    : '<p class="muted">Sin jugadores asignados.</p>';
+
   const cs = m.comments || [];
   const comments = cs.length ? cs.map(c=>`<div class="comment">
       <div class="comment-head"><b>${esc(c.author||'Anónimo')}</b>
@@ -757,7 +766,11 @@ function escabioPostHTML(){
   return `<div class="card">
     <h3>Post-partido</h3>
     <label>Partido<select id="esc-match">${opts}</select></label>
-    <h3 style="margin-top:4px">Escabio <span class="hint">· ${escTotal(m)}</span></h3>
+    <h3 style="margin-top:4px">Hachazo del partido</h3>
+    ${hachSelect}
+    <h3 style="margin-top:16px">Jugador polémica</h3>
+    ${polSelect}
+    <h3 style="margin-top:16px">Escabio <span class="hint">· ${escTotal(m)}</span></h3>
     ${escRows}
     <h3 style="margin-top:16px">Comentarios <span class="hint">· ${cs.length}</span></h3>
     <div class="comment-list">${comments}</div>
@@ -803,23 +816,6 @@ function matchDetailHTML(){
     ? `<select id="mvp-select"><option value="">Sin definir</option>${mvpOpts}</select>`
     : `<p class="muted">Asigná jugadores primero.</p>`;
 
-  const hachazoOpts = played.map(id=>`<option value="${id}" ${m.hachazoId===id?'selected':''}>${esc(pname(id))}</option>`).join('');
-  const hachazoSelect = played.length
-    ? `<select id="hachazo-select"><option value="">Sin definir</option>${hachazoOpts}</select>`
-    : `<p class="muted">Asigná jugadores primero.</p>`;
-
-  const patList = played.filter(id=>getPlayer(id)).map(id=>{
-    const q = patQty(m, id);
-    return `<div class="assign-row">
-      <span class="pname">${playerAvatar(getPlayer(id),26)}${esc(pname(id))}</span>
-      <div class="esc-ctrl">
-        <button class="icon-btn" data-action="pat-dec" data-id="${id}">−</button>
-        <span class="esc-val">${q}</span>
-        <button class="icon-btn" data-action="pat-inc" data-id="${id}">+</button>
-      </div>
-    </div>`;
-  }).join('') || '<p class="muted">Asigná jugadores primero.</p>';
-
   return `
     <button class="btn ghost sm" data-action="back" style="margin-bottom:14px">← Volver</button>
     <div class="card">
@@ -846,16 +842,6 @@ function matchDetailHTML(){
     </div>
 
     <div class="card">
-      <h3>Hachazo del partido</h3>
-      ${hachazoSelect}
-    </div>
-
-    <div class="card">
-      <h3>Patadas <span class="hint">· ${patTotal(m)}</span></h3>
-      ${patList}
-    </div>
-
-    <div class="card">
       <h3>${isRival?'Quiénes juegan':'Armar los equipos'}
         <span class="hint">· A: ${m.teamA.length}${isRival?'':' · B: '+m.teamB.length}</span></h3>
       ${assign}
@@ -868,7 +854,7 @@ function matchDetailHTML(){
 /* ---------- Estadísticas ---------- */
 function computeStats(){
   const st = {};
-  data.players.forEach(p=> st[p.id]={pj:0,goles:0,asist:0,mvp:0,v:0,d:0,e:0,escabio:0,patadas:0,hachazos:0,racha:0,rachaAct:0});
+  data.players.forEach(p=> st[p.id]={pj:0,goles:0,asist:0,mvp:0,v:0,d:0,e:0,escabio:0,hachazos:0,polemicas:0,racha:0,rachaAct:0});
   data.matches.forEach(m=>{
     const a = scoreOf(m,'A'), b = scoreOf(m,'B');
     const resA = a>b ? 'v' : a<b ? 'd' : 'e';
@@ -881,7 +867,8 @@ function computeStats(){
     });
     if(m.mvpId && st[m.mvpId]) st[m.mvpId].mvp++;
     if(m.hachazoId && st[m.hachazoId]) st[m.hachazoId].hachazos++;
-    data.players.forEach(p=>{ st[p.id].escabio += escQty(m, p.id); st[p.id].patadas += patQty(m, p.id); });
+    if(m.polemicaId && st[m.polemicaId]) st[m.polemicaId].polemicas++;
+    data.players.forEach(p=>{ st[p.id].escabio += escQty(m, p.id); });
   });
   // racha invicta (actual y mejor historica) por jugador
   data.players.forEach(p=>{
@@ -912,8 +899,8 @@ function rankCats(){
     invicto:['Invictos',         s=>s.v+s.e],
     racha:  ['Racha invicta',    s=>s.racha],
     escabio:['Escabio',          s=>s.escabio],
-    patadas:['Patadas',          s=>s.patadas],
-    hachazos:['Hachazos',        s=>s.hachazos]
+    hachazos:['Hachazos',        s=>s.hachazos],
+    polemicas:['Polémica',       s=>s.polemicas]
   };
 }
 function rankingHTML(){
@@ -971,16 +958,16 @@ function statsHTML(){
     <td class="c">${r.s.e||''}</td>
     <td class="c loss">${r.s.d||''}</td>
     <td class="c gold">${r.s.racha||''}</td>
-    <td class="c loss">${r.s.patadas||''}</td>
     <td class="c loss">${r.s.hachazos||''}</td>
+    <td class="c loss">${r.s.polemicas||''}</td>
     <td class="c">${r.s.escabio||''}</td>
     <td class="c">${r.s.mvp||''}</td>
   </tr>`).join('');
   return head + rankingHTML() + summary + `<div class="card"><div class="table-wrap"><table class="table">
-    <thead><tr><th class="c">#</th><th>Jugador</th><th class="c">PJ</th><th class="c">G</th><th class="c">A</th><th class="c">V</th><th class="c">E</th><th class="c">D</th><th class="c">Rach</th><th class="c">Pat</th><th class="c">Hach</th><th class="c">Esc</th><th class="c">MVP</th></tr></thead>
+    <thead><tr><th class="c">#</th><th>Jugador</th><th class="c">PJ</th><th class="c">G</th><th class="c">A</th><th class="c">V</th><th class="c">E</th><th class="c">D</th><th class="c">Rach</th><th class="c">Hach</th><th class="c">Polém</th><th class="c">Esc</th><th class="c">MVP</th></tr></thead>
     <tbody>${body}</tbody>
   </table></div></div>
-  <p class="muted" style="text-align:center">PJ: jugados · G: goles · A: asistencias · V: ganados · E: empatados · D: perdidos · Rach: mejor racha invicta · Pat: patadas · Hach: hachazos · Esc: escabios · MVP: figura</p>`;
+  <p class="muted" style="text-align:center">PJ: jugados · G: goles · A: asistencias · V: ganados · E: empatados · D: perdidos · Rach: mejor racha invicta · Hach: hachazos · Polém: polémicas · Esc: escabios · MVP: figura</p>`;
 }
 
 /* ---------- Ficha de jugador ---------- */
@@ -1010,14 +997,14 @@ function playerDetailHTML(){
         </div>
       </div>`;
   }
-  const s = computeStats()[p.id] || {pj:0,goles:0,asist:0,mvp:0,v:0,d:0,e:0,escabio:0,patadas:0,hachazos:0,racha:0,rachaAct:0};
+  const s = computeStats()[p.id] || {pj:0,goles:0,asist:0,mvp:0,v:0,d:0,e:0,escabio:0,hachazos:0,polemicas:0,racha:0,rachaAct:0};
   const played = data.matches
     .filter(m=>(m.teamA||[]).includes(p.id) || (m.teamB||[]).includes(p.id))
     .sort((a,b)=>(a.date||'').localeCompare(b.date||''));
 
   const invictos = s.v + s.e;
   const tiles = [['PJ',s.pj,''],['V',s.v,'win'],['E',s.e,''],['D',s.d,'loss'],
-                 ['Goles',s.goles,''],['Asist.',s.asist,''],['Patadas',s.patadas,'loss'],['Hachazos',s.hachazos,'loss'],
+                 ['Goles',s.goles,''],['Asist.',s.asist,''],['Hachazos',s.hachazos,'loss'],['Polémica',s.polemicas,'loss'],
                  ['Figura',s.mvp,'gold'],['Escabio',s.escabio,'gold']]
     .map(([l,v,c])=>`<div class="tile"><span class="tile-num ${c}">${v}</span><span class="tile-lbl">${l}</span></div>`).join('');
 
@@ -1254,14 +1241,6 @@ function escAdjust(pid, delta){
   let q = (Number(m.escabio[pid]) || 0) + delta;
   if(q < 0) q = 0;
   if(q === 0) delete m.escabio[pid]; else m.escabio[pid] = q;
-  save(); persistMatch(m); render();
-}
-function patAdjust(pid, delta){
-  const m = data.matches.find(x=>x.id===currentMatchId); if(!m) return;
-  if(!m.patadas || Array.isArray(m.patadas)) m.patadas = migMap(m.patadas);
-  let q = (Number(m.patadas[pid]) || 0) + delta;
-  if(q < 0) q = 0;
-  if(q === 0) delete m.patadas[pid]; else m.patadas[pid] = q;
   save(); persistMatch(m); render();
 }
 function addComment(){
@@ -1566,8 +1545,6 @@ document.addEventListener('click', e=>{
     case 'toggle-team': toggleTeam(id, t.dataset.side); break;
     case 'esc-inc': escAdjust(id, 1); break;
     case 'esc-dec': escAdjust(id, -1); break;
-    case 'pat-inc': patAdjust(id, 1); break;
-    case 'pat-dec': patAdjust(id, -1); break;
     case 'add-comment': addComment(); break;
     case 'del-comment': delComment(id); break;
     case 'rank-cat': rankCat = t.dataset.cat; render(); break;
@@ -1598,8 +1575,12 @@ document.addEventListener('change', e=>{
     if(m){ m.mvpId = e.target.value || null; sfx('mvp'); save(); persistMatch(m); }
   }
   if(e.target.id==='hachazo-select'){
-    const m = data.matches.find(x=>x.id===currentMatchId);
-    if(m){ m.hachazoId = e.target.value || null; save(); persistMatch(m); }
+    const m = data.matches.find(x=>x.id===escabioMatchId);
+    if(m){ m.hachazoId = e.target.value || null; save(); persistMatch(m); render(); }
+  }
+  if(e.target.id==='polemica-select'){
+    const m = data.matches.find(x=>x.id===escabioMatchId);
+    if(m){ m.polemicaId = e.target.value || null; save(); persistMatch(m); render(); }
   }
 });
 
