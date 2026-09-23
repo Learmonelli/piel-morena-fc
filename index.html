@@ -1252,10 +1252,21 @@ function importData(){
   };
   inp.click();
 }
-function resetData(){
-  if(!confirm('Esto borra TODOS los jugadores y partidos de este dispositivo. ¿Seguro?')) return;
+async function resetData(){
+  if(!confirm('Esto borra TODOS los jugadores y partidos (de este dispositivo y de la nube). ¿Seguro?')) return;
   if(!confirm('Última confirmación: se pierde todo. ¿Continuar?')) return;
-  data = { players:[], matches:[] }; currentMatchId=null; save(); render();
+  data = { players:[], matches:[] }; currentMatchId=null; escabioMatchId=null; save();
+  if(fsReady()){
+    try{
+      const ps = await db.collection('players').get();
+      const ms = await db.collection('matches').get();
+      const batch = db.batch();
+      ps.forEach(d=> batch.delete(d.ref));
+      ms.forEach(d=> batch.delete(d.ref));
+      await batch.commit();
+    }catch(e){ cloudFail(e); }
+  }
+  render();
 }
 /* ---------- Himno 8-bit (composicion original) ---------- */
 let himnoOn = false, himnoTimer = null, himnoOsc = [], noiseBuf = null;
