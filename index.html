@@ -241,6 +241,13 @@
   .tile{background:#320d18;border:1px solid var(--line);border-radius:12px;padding:10px 4px;text-align:center}
   .tile-num{display:block;font-size:20px;font-weight:800;line-height:1.15}
   .tile-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);font-weight:700}
+  .streak-box{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px;
+    background:linear-gradient(145deg,rgba(242,183,5,.14),rgba(242,183,5,.04));
+    border:2px solid var(--gold);border-radius:12px;padding:12px 6px;text-align:center}
+  .streak-item{display:flex;flex-direction:column;gap:2px;min-width:0}
+  .streak-item + .streak-item{border-left:1px solid rgba(242,183,5,.3)}
+  .streak-num{font-size:26px;font-weight:800;color:var(--gold);line-height:1.1}
+  .streak-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);font-weight:700}
   .log-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid rgba(74,33,48,.55)}
   .log-row:last-child{border-bottom:0}
   .res{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;flex:0 0 auto;font-size:12px;font-weight:800}
@@ -828,7 +835,7 @@ function matchDetailHTML(){
 /* ---------- Estadísticas ---------- */
 function computeStats(){
   const st = {};
-  data.players.forEach(p=> st[p.id]={pj:0,goles:0,asist:0,mvp:0,v:0,d:0,e:0,escabio:0});
+  data.players.forEach(p=> st[p.id]={pj:0,goles:0,asist:0,mvp:0,v:0,d:0,e:0,escabio:0,racha:0,rachaAct:0});
   data.matches.forEach(m=>{
     const a = scoreOf(m,'A'), b = scoreOf(m,'B');
     const resA = a>b ? 'v' : a<b ? 'd' : 'e';
@@ -842,6 +849,21 @@ function computeStats(){
     if(m.mvpId && st[m.mvpId]) st[m.mvpId].mvp++;
     data.players.forEach(p=>{ st[p.id].escabio += escQty(m, p.id); });
   });
+  // racha invicta (actual y mejor historica) por jugador
+  data.players.forEach(p=>{
+    const ms = data.matches
+      .filter(m=>(m.teamA||[]).includes(p.id) || (m.teamB||[]).includes(p.id))
+      .sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+    let best = 0, cur = 0;
+    ms.forEach(m=>{
+      const side = (m.teamA||[]).includes(p.id) ? 'A' : 'B';
+      const a = scoreOf(m,'A'), b = scoreOf(m,'B');
+      const my = side==='A'?a:b, op = side==='A'?b:a;
+      if(my >= op){ cur++; if(cur>best) best=cur; } else cur=0;
+    });
+    st[p.id].rachaAct = cur;
+    st[p.id].racha = best;
+  });
   return st;
 }
 function rankCats(){
@@ -854,6 +876,7 @@ function rankCats(){
     v:      ['Victorias',        s=>s.v],
     d:      ['Derrotas',         s=>s.d],
     invicto:['Invictos',         s=>s.v+s.e],
+    racha:  ['Racha invicta',    s=>s.racha],
     escabio:['Escabio',          s=>s.escabio]
   };
 }
@@ -931,17 +954,8 @@ function playerDetailHTML(){
     .sort((a,b)=>(a.date||'').localeCompare(b.date||''));
 
   const invictos = s.v + s.e;
-  let racha = 0;
-  for(let i = played.length - 1; i >= 0; i--){
-    const mm = played[i];
-    const sd = (mm.teamA||[]).includes(p.id) ? 'A' : 'B';
-    const my = sd==='A' ? scoreOf(mm,'A') : scoreOf(mm,'B');
-    const op = sd==='A' ? scoreOf(mm,'B') : scoreOf(mm,'A');
-    if(my >= op) racha++; else break;
-  }
   const tiles = [['PJ',s.pj,''],['V',s.v,'win'],['E',s.e,''],['D',s.d,'loss'],
-                 ['Invictos',invictos,'win'],['Goles',s.goles,''],['Asist.',s.asist,''],['Figura',s.mvp,'gold'],
-                 ['Escabio',s.escabio,'gold']]
+                 ['Goles',s.goles,''],['Asist.',s.asist,''],['Figura',s.mvp,'gold'],['Escabio',s.escabio,'gold']]
     .map(([l,v,c])=>`<div class="tile"><span class="tile-num ${c}">${v}</span><span class="tile-lbl">${l}</span></div>`).join('');
 
   const log = played.length ? played.map(m=>{
@@ -976,7 +990,11 @@ function playerDetailHTML(){
         </div>
       </div>
       <div class="tiles">${tiles}</div>
-      ${racha>0?`<p class="muted" style="text-align:center;margin:12px 0 0">Racha invicta actual: <b>${racha}</b> partido${racha===1?'':'s'}</p>`:''}
+      <div class="streak-box">
+        <div class="streak-item"><span class="streak-num">${invictos}</span><span class="streak-lbl">Partidos invictos</span></div>
+        <div class="streak-item"><span class="streak-num">${s.rachaAct}</span><span class="streak-lbl">Racha actual</span></div>
+        <div class="streak-item"><span class="streak-num">${s.racha}</span><span class="streak-lbl">Mejor racha</span></div>
+      </div>
     </div>
     <div class="card"><h3>Partido a partido</h3>${log}</div>
   `;
