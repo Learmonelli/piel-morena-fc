@@ -7,6 +7,21 @@ Aplicación web **mobile-first** para que un equipo amateur de fútbol 7 lleve l
 
 ---
 
+## 📸 Capturas
+
+| Jugadores | Partido | Ranking |
+|---|---|---|
+| ![Jugadores](capturas/jugadores.png) | ![Partido](capturas/partido.png) | ![Ranking](capturas/ranking.png) |
+
+| Post-partido | Estadísticas | Ficha de jugador |
+|---|---|---|
+| ![Post-partido](capturas/postpartido.png) | ![Estadísticas](capturas/estadisticas.png) | ![Ficha](capturas/ficha.png) |
+
+> Guardá las capturas en la carpeta **`capturas/`** con estos nombres:
+> `jugadores.png`, `partido.png`, `ranking.png`, `postpartido.png`, `estadisticas.png`, `ficha.png`.
+
+---
+
 ## ✨ Características
 
 - **Jugadores** con **avatar pixel art 16-bit generado por código** (sin imágenes): se elige piel, color y corte de pelo, barba y camiseta.
