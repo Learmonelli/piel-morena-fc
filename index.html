@@ -171,7 +171,7 @@
   .table tr:first-child td .rk{color:var(--gold)}
   .rk{font-weight:800;color:var(--muted);font-size:12px}
   .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
-  .table-wrap .table{min-width:600px}
+  .table-wrap .table{min-width:660px}
 
   /* Ranking */
   .cat-pills{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
@@ -386,7 +386,7 @@ let currentMatchId = null;
 let currentPlayerId = null;
 let playerBackView = 'jugadores';
 let newFace = null;
-let rankCat = 'goles';
+let rankCat = 'racha';
 let escabioMatchId = null;
 let commentName = localStorage.getItem('pmfc_name') || '';
 
@@ -934,14 +934,15 @@ function statsHTML(){
     <td class="c win">${r.s.v||''}</td>
     <td class="c">${r.s.e||''}</td>
     <td class="c loss">${r.s.d||''}</td>
+    <td class="c gold">${r.s.racha||''}</td>
     <td class="c">${r.s.escabio||''}</td>
     <td class="c">${r.s.mvp||''}</td>
   </tr>`).join('');
   return head + rankingHTML() + summary + `<div class="card"><div class="table-wrap"><table class="table">
-    <thead><tr><th class="c">#</th><th>Jugador</th><th class="c">PJ</th><th class="c">G</th><th class="c">A</th><th class="c">V</th><th class="c">E</th><th class="c">D</th><th class="c">Esc</th><th class="c">MVP</th></tr></thead>
+    <thead><tr><th class="c">#</th><th>Jugador</th><th class="c">PJ</th><th class="c">G</th><th class="c">A</th><th class="c">V</th><th class="c">E</th><th class="c">D</th><th class="c">Rach</th><th class="c">Esc</th><th class="c">MVP</th></tr></thead>
     <tbody>${body}</tbody>
   </table></div></div>
-  <p class="muted" style="text-align:center">PJ: jugados · G: goles · A: asistencias · V: ganados · E: empatados · D: perdidos · Esc: escabios · MVP: figura</p>`;
+  <p class="muted" style="text-align:center">PJ: jugados · G: goles · A: asistencias · V: ganados · E: empatados · D: perdidos · Rach: mejor racha invicta · Esc: escabios · MVP: figura</p>`;
 }
 
 /* ---------- Ficha de jugador ---------- */
