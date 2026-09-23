@@ -346,9 +346,17 @@ let cloudState = { status:'unset', message:'' };
 let bootLocal = { players:[], matches:[] };
 let gotPlayers = false, gotMatches = false, cloudWasEmpty = false;
 
+const DEFAULT_FB_CONFIG = {
+  apiKey: "AIzaSyCwWiw-_4CSzSv5jXeHYd9eHwzOoUrssOQ",
+  authDomain: "piel-morena-fc.firebaseapp.com",
+  projectId: "piel-morena-fc",
+  storageBucket: "piel-morena-fc.firebasestorage.app",
+  messagingSenderId: "198605126708",
+  appId: "1:198605126708:web:d3c0f2de78e18041e01e61"
+};
 function loadFbConfig(){
   try{ const c = JSON.parse(localStorage.getItem(FBCFG_KEY)); if(c && c.projectId) return c; }catch(e){}
-  return null;
+  return DEFAULT_FB_CONFIG;
 }
 function cloudConfigured(){ return !!fbConfig; }
 function fsReady(){ return !!db; }
@@ -373,9 +381,9 @@ function saveFbConfig(){
 function changeFbConfig(){
   if(!confirm('¿Cambiar la configuración de Firebase?')) return;
   localStorage.removeItem(FBCFG_KEY);
-  fbConfig = null; db = null; cloudStarted = false;
+  fbConfig = DEFAULT_FB_CONFIG; db = null; cloudStarted = false;
   cloudState = { status:'unset', message:'' };
-  render();
+  initCloud(); render();
 }
 
 function initCloud(){
