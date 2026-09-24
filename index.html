@@ -374,7 +374,7 @@
       </svg>
       <div>
         <h1>Piel Morena FC</h1>
-        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v46</span></p>
+        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v47</span></p>
       </div>
     </div>
     <div class="header-btns">
@@ -1056,6 +1056,11 @@ function matchDetailHTML(){
     <div class="card">
       <h3>${isRival?'Quiénes juegan':'Armar los equipos'}
         <span class="hint">· A: ${m.teamA.length}${isRival?'':' · B: '+m.teamB.length}</span></h3>
+      ${isRival?'':`<div class="toolbar" style="margin-bottom:12px">
+        <button class="btn primary sm" data-action="shuffle-teams">Sortear equipos</button>
+        <button class="btn ghost sm" data-action="clear-teams">Vaciar</button>
+      </div>
+      <p class="muted" style="margin:0 0 10px">Marcá quiénes juegan con A o B y tocá <b>Sortear</b> para repartirlos al azar en partes iguales.</p>`}
       ${guestAdd}
       ${assign}
     </div>
@@ -1521,6 +1526,23 @@ function toggleTeam(pid, side){
   else { const j=other.indexOf(pid); if(j>=0) other.splice(j,1); arr.push(pid); }
   save(); persistMatch(m); render();
 }
+function shuffleTeams(){
+  const m = data.matches.find(x=>x.id===currentMatchId); if(!m) return;
+  const pool = [...new Set([...(m.teamA||[]), ...(m.teamB||[])])];
+  if(pool.length < 2){ alert('Marcá al menos 2 jugadores en A o B para poder sortear.'); return; }
+  for(let i=pool.length-1;i>0;i--){ const j = Math.floor(Math.random()*(i+1)); [pool[i],pool[j]] = [pool[j],pool[i]]; }
+  const a = [], b = [];
+  pool.forEach((id,i)=> (i % 2 === 0 ? a : b).push(id));
+  const swap = pool.length % 2 === 1 && Math.random() < 0.5;
+  m.teamA = swap ? b : a;
+  m.teamB = swap ? a : b;
+  save(); persistMatch(m); render();
+}
+function clearTeams(){
+  const m = data.matches.find(x=>x.id===currentMatchId); if(!m) return;
+  m.teamA = []; m.teamB = [];
+  save(); persistMatch(m); render();
+}
 function escAdjust(pid, delta){
   const m = data.matches.find(x=>x.id===escabioMatchId); if(!m) return;
   if(!m.escabio || Array.isArray(m.escabio)) m.escabio = migEsc(m);
@@ -1845,6 +1867,8 @@ document.addEventListener('click', e=>{
     case 'cancel-edit': playerEditMode = false; newFace = null; newPositions = null; render(); break;
     case 'save-player': savePlayer(); break;
     case 'toggle-team': toggleTeam(id, t.dataset.side); break;
+    case 'shuffle-teams': shuffleTeams(); break;
+    case 'clear-teams': clearTeams(); break;
     case 'esc-inc': escAdjust(id, 1); break;
     case 'esc-dec': escAdjust(id, -1); break;
     case 'add-comment': addComment(); break;
