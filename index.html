@@ -393,7 +393,7 @@
       </svg>
       <div>
         <h1>Piel Morena FC</h1>
-        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v50</span></p>
+        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v51</span></p>
       </div>
     </div>
     <div class="header-btns">
@@ -1951,6 +1951,16 @@ function sfx(name){
   if(!S) return;
   S.forEach(([f,t,d])=> tone(f, t, d, name==='click' ? 0.07 : 0.16));
 }
+const SFX_BY_ACTION = {
+  'add-player':'add','add-guest':'add','create-match':'add','add-goal':'add','add-comment':'add',
+  'shuffle-teams':'add','face-random':'add','save-player':'add',
+  'del-player':'del','del-goal':'del','del-comment':'del','delete-match':'del','clear-teams':'del'
+};
+function uiSound(action){
+  if(!sfxOn) return;
+  if(action === 'toggle-sfx' || action === 'confirm-goal') return;
+  sfx(SFX_BY_ACTION[action] || 'click');
+}
 function updateSfxBtn(){
   const b = document.getElementById('sfx-btn');
   if(b) b.textContent = sfxOn ? 'Sonido' : 'Mudo';
@@ -1959,6 +1969,7 @@ function toggleSfx(){
   sfxOn = !sfxOn;
   localStorage.setItem('pmfc_sfx', sfxOn ? 'on' : 'off');
   updateSfxBtn();
+  if(sfxOn) sfx('add');
 }
 
 /* ---------- Eventos ---------- */
@@ -1966,6 +1977,7 @@ document.addEventListener('click', e=>{
   const t = e.target.closest('[data-action]');
   if(!t) return;
   const a = t.dataset.action, id = t.dataset.id;
+  uiSound(a);
   switch(a){
     case 'tab': view = t.dataset.view; currentMatchId=null; render(); break;
     case 'open-match': currentMatchId=id; view='partidos'; render(); break;
