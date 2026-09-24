@@ -130,8 +130,10 @@
 
   /* Editor de cara */
   .face-editor{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
-  .face-preview{display:flex;justify-content:center}
-  .face-preview svg{height:84px;width:auto}
+  .face-preview{display:flex;justify-content:center;position:sticky;-webkit-position:sticky;
+    top:0;z-index:6;background:var(--card);padding:12px 0;margin:0 0 8px;
+    border-bottom:3px solid #240a12;box-shadow:0 6px 10px -6px rgba(0,0,0,.6)}
+  .face-preview svg{height:84px;width:auto;background:transparent}
   .face-controls{display:flex;flex-direction:column;gap:8px}
   .face-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
   .face-lbl{font-size:12px;color:var(--muted);width:62px;flex:0 0 auto;font-weight:700}
@@ -372,7 +374,7 @@
       </svg>
       <div>
         <h1>Piel Morena FC</h1>
-        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v45</span></p>
+        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v46</span></p>
       </div>
     </div>
     <div class="header-btns">
