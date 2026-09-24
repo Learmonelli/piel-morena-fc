@@ -24,17 +24,17 @@ Aplicación web **mobile-first** para que un equipo amateur de fútbol 7 lleve l
 
 ## ✨ Características
 
-- **Jugadores** con **avatar pixel art 16-bit generado por código** (sin imágenes): se elige piel, color y corte de pelo, barba y camiseta.
+- **Jugadores** con **avatar pixel art generado por código** (sin imágenes), estilo *chibi*: cuerpo entero 24×32 en leve diagonal y **carnet de frente** (cabeza y hombros) en Estadísticas. Se elige piel, color y corte de pelo, expresión, barba, anteojos, gorra/vincha/gorro, y camiseta (color, segundo color y diseño).
 - **Partidos** internos (7 vs 7) o contra un rival, con fecha y equipos.
 - **Goles y asistencias** con selección de jugador por evento; el marcador se calcula solo.
-- **Figura del partido** (MVP) y **registro de victorias / empates / derrotas** por jugador.
+- **Figura del partido** (MVP), **Mejor arquero** del partido (separado del MVP) y **registro de victorias / empates / derrotas** por jugador.
 - **Ranking con podio** con categorías: goles, asistencias, goles+asist., figuras, partidos jugados, victorias, derrotas y escabio.
 - **Post-partido**: registro de "escabio" por cantidad (stepper −/+) y **comentarios** por partido.
 - **Ficha de cada jugador**: totales + historial partido a partido.
 - **Datos en tiempo real**: todo se guarda en la nube (Firebase Firestore) y se sincroniza al instante entre dispositivos.
 - **Tema "Cancha arcade"**: fondo de cancha pixelada, tipografías retro y paneles vinotinto.
 - **Audio 8-bit generado con Web Audio API**: efectos (gol, figura) y un **himno original** en loop.
-- **Copias de seguridad** con exportar/importar JSON.
+- **Copias de seguridad**: exportar/importar JSON y **backup automático semanal en la nube** (colección `backups`, se conservan las últimas 8 semanas, con descargar/restaurar).
 
 ---
 
@@ -86,8 +86,9 @@ SPA de un solo archivo. El estado de la app (`{ players, matches }`) vive en Fir
   "name": "Juan Pérez",
   "nickname": "Tuti",
   "number": "10",
-  "position": "Delantero",
-  "face": { "skin": 3, "hair": 4, "shirt": 1, "style": 0, "beard": false }
+  "positions": ["MCD", "MC"],
+  "face": { "skin": 3, "hair": 4, "shirt": 1, "style": 0, "eyes": 0, "facial": 1,
+            "hat": 0, "hatColor": 0, "glasses": 0, "shirt2": 6, "jersey": 0 }
 }
 ```
 
@@ -116,6 +117,7 @@ service cloud.firestore {
   match /databases/{db}/documents {
     match /players/{id} { allow read, write: if true; }
     match /matches/{id} { allow read, write: if true; }
+    match /backups/{id} { allow read, write: if true; }
   }
 }
 ```

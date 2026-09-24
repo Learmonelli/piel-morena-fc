@@ -94,6 +94,7 @@
   .tag.mvp{background:rgba(106,44,145,.28);color:#d9b6ef}
   .tag.hachazo{background:rgba(229,72,77,.2);color:#ff9a9d}
   .tag.polemica{background:rgba(242,183,5,.18);color:var(--gold)}
+  .tag.gk{background:rgba(31,155,209,.22);color:#9fd8f5}
   .tags{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
   .match-title{font-size:15px;font-weight:700;margin-bottom:10px}
   .score{display:flex;align-items:center;justify-content:center;gap:14px;
@@ -130,7 +131,7 @@
   /* Editor de cara */
   .face-editor{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
   .face-preview{display:flex;justify-content:center}
-  .face-preview svg{width:64px;height:64px}
+  .face-preview svg{height:84px;width:auto}
   .face-controls{display:flex;flex-direction:column;gap:8px}
   .face-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
   .face-lbl{font-size:12px;color:var(--muted);width:62px;flex:0 0 auto;font-weight:700}
@@ -371,7 +372,7 @@
       </svg>
       <div>
         <h1>Piel Morena FC</h1>
-        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v25</span></p>
+        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v45</span></p>
       </div>
     </div>
     <div class="header-btns">
@@ -392,6 +393,7 @@ let currentMatchId = null;
 let currentPlayerId = null;
 let playerBackView = 'jugadores';
 let newFace = null;
+let newPositions = null;
 let rankCat = 'racha';
 let escabioMatchId = null;
 let commentName = localStorage.getItem('pmfc_name') || '';
@@ -488,6 +490,12 @@ async function initCloud(){
       data.matches = snap.docs.map(d=>d.data());
       afterSnapshot();
     }, err=>cloudFail(err));
+
+    db.collection('backups').onSnapshot(snap=>{
+      backups = snap.docs.map(d=>Object.assign({id:d.id}, d.data()));
+      backupsLoaded = true; backupsBlocked = false;
+      afterSnapshot();
+    }, ()=>{ backupsLoaded = true; backupsBlocked = true; render(); });
   }catch(e){
     cloudState = { status:'error', message:'Error al iniciar Firebase: ' + e.message };
     renderCloudStatus();
@@ -497,6 +505,7 @@ async function initCloud(){
 function afterSnapshot(){
   localStorage.setItem(KEY, JSON.stringify(data));
   if(cloudState.status !== 'error') cloudState = { status:'ok', message:'Sincronizado en tiempo real.' };
+  maybeAutoBackup();
   render();
 }
 
@@ -505,6 +514,83 @@ function removePlayerDoc(id){ if(fsReady()) db.collection('players').doc(id).del
 function persistMatch(m){ if(fsReady()) db.collection('matches').doc(m.id).set(m).catch(e=>cloudFail(e)); }
 function removeMatchDoc(id){ if(fsReady()) db.collection('matches').doc(id).delete().catch(e=>cloudFail(e)); }
 function cloudFail(e){ cloudState = { status:'error', message:'Error: ' + (e && e.message ? e.message : e) }; renderCloudStatus(); }
+
+/* ---------- Backups (copia semanal en la nube) ---------- */
+let backups = [];
+let backupsLoaded = false;
+let backupsBlocked = false;
+let autoBackupTried = false;
+function backupWeekKey(){
+  const d = new Date();
+  const diff = (d.getDay() - 3 + 7) % 7;          // dias desde el ultimo miercoles
+  const t = new Date(d.getTime() - diff*86400000);
+  const m = String(t.getMonth()+1).padStart(2,'0'), dd = String(t.getDate()).padStart(2,'0');
+  return `${t.getFullYear()}-${m}-${dd}`;
+}
+function createBackup(kind){
+  if(!fsReady() || backupsBlocked) return;
+  const week = backupWeekKey();
+  const rec = { week, ts: Date.now(), kind: kind||'auto', players: data.players, matches: data.matches };
+  db.collection('backups').doc(week).set(rec)
+    .then(()=>{ cloudState = { status:'ok', message:'Backup '+fmtDate(week)+' guardado.' }; renderCloudStatus(); pruneBackups(); })
+    .catch(()=>{ backupsBlocked = true; render(); });
+}
+function pruneBackups(){
+  if(!fsReady()) return;
+  db.collection('backups').get().then(snap=>{
+    const docs = snap.docs.slice().sort((a,b)=> String(b.data().week||'').localeCompare(String(a.data().week||'')));
+    docs.slice(8).forEach(d=>db.collection('backups').doc(d.id).delete().catch(()=>{}));
+  }).catch(()=>{});
+}
+function maybeAutoBackup(){
+  if(autoBackupTried || !fsReady() || !backupsLoaded || backupsBlocked) return;
+  if(!data.players.length && !data.matches.length) return;
+  autoBackupTried = true;
+  const week = backupWeekKey();
+  if(backups.some(b=>b.week===week)) return;
+  createBackup('auto');
+}
+function downloadBackup(id){
+  const b = backups.find(x=>x.id===id); if(!b) return;
+  const payload = { app:'piel-morena-fc', version:1, exportedAt:new Date().toISOString(), players:b.players||[], matches:b.matches||[] };
+  const blob = new Blob([JSON.stringify(payload,null,2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download='backup-'+b.week+'.json'; a.click();
+  URL.revokeObjectURL(url);
+}
+function restoreBackup(id){
+  const b = backups.find(x=>x.id===id); if(!b) return;
+  if(!confirm('¿Restaurar el backup del '+fmtDate(b.week)+'? Se reemplazan los datos actuales en todos los dispositivos.')) return;
+  const players = b.players||[], matches = b.matches||[];
+  data.players = players; data.matches = matches; save(); render();
+  if(fsReady()){
+    const overwrite = (name, arr) => db.collection(name).get().then(snap=>{
+      const dels = snap.docs.map(d=>db.collection(name).doc(d.id).delete());
+      return Promise.all(dels).then(()=>Promise.all(arr.map(o=>db.collection(name).doc(o.id).set(o))));
+    });
+    overwrite('players', players).then(()=>overwrite('matches', matches))
+      .then(()=>{ cloudState = { status:'ok', message:'Backup del '+fmtDate(b.week)+' restaurado.' }; renderCloudStatus(); })
+      .catch(e=>cloudFail(e));
+  }
+}
+function backupsHTML(){
+  if(!cloudConfigured()) return '';
+  if(backupsBlocked) return `<h3 style="margin-top:16px">Backups en la nube</h3>
+    <p class="muted" style="color:#ff9a9d">Falta habilitar la colección <b>backups</b> en las reglas de Firestore (no afecta a tus datos). Agregá esta línea y publicá:</p>
+    <pre class="rules">match /backups/{id} { allow read, write: if true; }</pre>`;
+  const list = backups.slice().sort((a,b)=> String(b.week||'').localeCompare(String(a.week||'')));
+  const rows = list.map(b=>`<div class="assign-row">
+      <span class="pname">${fmtDate(b.week)} <span class="muted">· ${(b.players||[]).length} jug · ${(b.matches||[]).length} part · ${b.kind==='manual'?'manual':'auto'}</span></span>
+      <span class="side-btns">
+        <button class="sidebtn" data-action="bk-download" data-id="${b.id}">Descargar</button>
+        <button class="sidebtn" data-action="bk-restore" data-id="${b.id}">Restaurar</button>
+      </span>
+    </div>`).join('');
+  return `<h3 style="margin-top:16px">Backups en la nube <span class="hint">· automático los miércoles</span></h3>
+    <p class="muted">Se guarda una copia cada miércoles (después del partido del martes). Se conservan las últimas 8 semanas. Podés descargar o restaurar cualquiera.</p>
+    <div class="toolbar" style="margin-bottom:8px"><button class="btn ghost sm" data-action="bk-now">Backup ahora</button></div>
+    ${rows || '<p class="muted">Todavía no hay backups.</p>'}`;
+}
 
 function cloudStatusHTML(){
   const map = {
@@ -537,6 +623,7 @@ service cloud.firestore {
   match /databases/{db}/documents {
     match /players/{id} { allow read, write: if true; }
     match /matches/{id} { allow read, write: if true; }
+    match /backups/{id} { allow read, write: if true; }
   }
 }</pre>
     <div class="modal-actions"><button class="btn primary" data-action="modal-close">Entendido</button></div>
@@ -583,111 +670,187 @@ function shade(hex, f){
   const b = Math.min(255, Math.max(0, Math.round((n&255)*f)));
   return '#' + ((1<<24) + (r<<16) + (g<<8) + b).toString(16).slice(1);
 }
-const AV_SKIN  = ['#f1c9a5','#e8b98f','#dda96f','#c68642','#a9713f','#8d5524','#7a4a22'];
-const AV_HAIR  = ['#161616','#2e2119','#4a2f1b','#8a5a2b','#d9a441','#e8c874','#b5481f','#7a2f18'];
-const AV_SHIRT = ['#7d2233','#f2b705','#6a2c91','#8bc34a','#f3ead6','#b5703c','#1f9bd1','#e5484d'];
+const AV_SKIN  = ['#f1c9a5','#e8b98f','#dda96f','#c68642','#a9713f','#8d5524','#7a4a22','#6b3d1c','#57301a','#3d2110'];
+const AV_HAIR  = ['#161616','#2e2119','#4a2f1b','#8a5a2b','#d9a441','#e8c874','#b5481f','#7a2f18','#cfcfcf','#8f8f8f'];
+const AV_SHIRT = ['#7d2233','#f2b705','#6a2c91','#8bc34a','#f3ead6','#b5703c','#1f9bd1','#e5484d','#1b3a8c','#6fc0e8','#111111','#ffffff'];
+const AV_STYLE   = [['Corto',0],['Medio',1],['Largo',2],['Pelado',3],['Rulos',4],['Cresta',5],['Colita',6]];
+const AV_EYES    = [['Normal',0],['Guiño',1],['Sonrisa',2],['Enojado',3],['Sorpresa',4]];
+const AV_EYESIZE = [['Chicos',0],['Medianos',1],['Grandes',2],['Redondos',3],['Achinados',4],['Altos',5]];
+const AV_FACIAL  = [['Nada',0],['Barba',1],['Bigote',2],['Candado',3],['Completa',4]];
+const AV_HAT     = [['Nada',0],['Gorra',1],['Vincha',2],['Gorro',3]];
+const AV_GLASSES = [['Nada',0],['Redondos',1],['Cuadrados',2],['De sol',3]];
+const AV_JERSEY  = [['Lisa',0],['Rayas',1],['Banda',2],['Franja',3],['Mitades',4],['Mangas',5]];
 function randomFace(){
   return {
     skin: Math.floor(Math.random()*AV_SKIN.length),
     hair: Math.floor(Math.random()*AV_HAIR.length),
     shirt: Math.floor(Math.random()*AV_SHIRT.length),
-    style: Math.floor(Math.random()*4),
-    beard: Math.random() < 0.35
+    shirt2: Math.floor(Math.random()*AV_SHIRT.length),
+    style: Math.floor(Math.random()*AV_STYLE.length),
+    eyes: Math.floor(Math.random()*AV_EYES.length),
+    eyeSize: 1 + Math.floor(Math.random()*(AV_EYESIZE.length-1)),
+    facial: Math.random() < 0.4 ? 1 + Math.floor(Math.random()*4) : 0,
+    hat: Math.random() < 0.25 ? 1 + Math.floor(Math.random()*3) : 0,
+    hatColor: Math.floor(Math.random()*AV_SHIRT.length),
+    glasses: Math.random() < 0.18 ? 1 + Math.floor(Math.random()*3) : 0,
+    jersey: Math.floor(Math.random()*AV_JERSEY.length)
   };
 }
-function avatarSVG(seed, size, face){
+function avatarSVG(seed, size, face, view){
   size = size || 40;
+  const bust = view === 'bust';
   const h = hashStr(seed);
   const f = face || {};
-  const N = 16;
-  const g = Array.from({length:N}, () => Array(N).fill('.'));
-  const SKIN  = AV_SKIN[f.skin  != null ? f.skin  : (h >>> 3)  % AV_SKIN.length];
-  const HAIR  = AV_HAIR[f.hair  != null ? f.hair  : (h >>> 7)  % AV_HAIR.length];
-  const SHIRT = AV_SHIRT[f.shirt != null ? f.shirt : (h >>> 11) % AV_SHIRT.length];
-  const style = f.style != null ? f.style : (h >>> 15) % 4;
-  const beard = f.beard != null ? f.beard : ((h >>> 17) & 1) === 1;
-  const shirtRGB = (parseInt(SHIRT.slice(1,3),16)+parseInt(SHIRT.slice(3,5),16)+parseInt(SHIRT.slice(5,7),16));
-  const K = shirtRGB > 560 ? '#7d2233' : '#f3ead6';
+  const W = 24, H = 32;
+  const g = Array.from({length:H}, () => Array(W).fill('.'));
+  const pick = (v,k) => v != null ? v : (h >>> k);
+  const SKIN   = AV_SKIN[pick(f.skin, 3)   % AV_SKIN.length];
+  const HAIR   = AV_HAIR[pick(f.hair, 7)   % AV_HAIR.length];
+  const SHIRT  = AV_SHIRT[pick(f.shirt, 11) % AV_SHIRT.length];
+  const SHIRT2 = AV_SHIRT[f.shirt2 != null ? f.shirt2 % AV_SHIRT.length : (f.shirt != null ? (f.shirt+5) % AV_SHIRT.length : (h >>> 13) % AV_SHIRT.length)];
+  const HATCOL = AV_SHIRT[pick(f.hatColor, 19) % AV_SHIRT.length];
+  const style   = f.style   != null ? f.style   : (h >>> 15) % AV_STYLE.length;
+  const eyes    = f.eyes    != null ? f.eyes    : 0;
+  const eyeSize = f.eyeSize != null ? f.eyeSize : 2;
+  const facial  = f.facial  != null ? f.facial  : (f.beard ? 1 : 0);
+  const hat     = f.hat     != null ? f.hat     : 0;
+  const glasses = f.glasses != null ? f.glasses : 0;
+  const jersey  = f.jersey  != null ? f.jersey  : 0;
+  const turn = !bust;          // cuerpo: leve diagonal; carnet: de frente
+  const fx = turn ? 1 : 0;     // corrimiento 3/4 de la cara
 
-  const CX = 7.5, CY = 7.4, RX = 5.0, RY = 5.0;
-  const inE = (x,y,rx,ry) => (((x-CX)/rx)**2 + ((y-CY)/ry)**2) <= 1;
+  const put = (x,y,c)=>{ if(x>=0&&x<W&&y>=0&&y<H&&c!==undefined) g[y][x]=c; };
+  const inEll = (x,y,cx,cy,rx,ry)=>((x-cx)/rx)**2+((y-cy)/ry)**2<=1;
+  const rect = (x0,y0,x1,y1,c)=>{ for(let y=y0;y<=y1;y++) for(let x=x0;x<=x1;x++) put(x,y,c); };
 
-  // pelo con volumen (arriba, un poco mas ancho)
-  if(style !== 3){
-    for(let y=0;y<N;y++) for(let x=0;x<N;x++)
-      if(y <= 6 && inE(x,y,RX+1,RY+1)) g[y][x] = 'H';
+  // ---------- cabeza ----------
+  const HCX = 12, HCY = 8.4, HRX = 7.3, HRY = 7.7;
+  for(let y=0;y<H;y++) for(let x=0;x<W;x++)
+    if(inEll(x,y,HCX,HCY,HRX,HRY)) put(x,y, x>=16?'d':(x<=8?'L':'S'));
+  for(let x=9;x<=15;x++) if(inEll(x,15,HCX,HCY,HRX,HRY)) put(x,15,'d');
+  if(turn){ put(4,11,'d'); put(4,12,'S'); put(3,12,'d'); }
+
+  // ---------- pelo ----------
+  const cap=(yLim,exp=0.5)=>{ for(let y=0;y<=yLim;y++) for(let x=0;x<W;x++) if(inEll(x,y,HCX,HCY,HRX+exp,HRY+exp)) put(x,y,'H'); };
+  if(style===0){ cap(4); for(let y=4;y<=11;y++){ if(inEll(4,y)) put(4,y,'H'); if(inEll(19,y)) put(19,y,'H'); } }
+  else if(style===1){ cap(5.5); for(let y=4;y<=13;y++){ if(inEll(4,y)) put(4,y,'H'); if(inEll(19,y)) put(19,y,'H'); } }
+  else if(style===2){ cap(6.5); for(let y=4;y<=17;y++){ put(3,y,'H'); put(20,y,'H'); } for(let y=6;y<=11;y++){ put(2,y,'H'); put(21,y,'H'); } }
+  else if(style===3){ /* pelado */ }
+  else if(style===4){
+    const curl=(cx,cy,r)=>{ for(let y=0;y<H;y++) for(let x=0;x<W;x++) if((x-cx)*(x-cx)+(y-cy)*(y-cy)<=r*r) put(x,y,'H'); };
+    curl(6,8,3.0); curl(9,4.5,3.0); curl(13,4.0,3.0); curl(16,4.5,3.0); curl(19,8,3.0);
+    curl(4,12,2.2); curl(21,12,2.2);
+  }
+  else if(style===5){ cap(2.0); for(let y=0;y<=7;y++){ put(11,y,'H'); put(12,y,'H'); put(13,y,'H'); } }
+  else if(style===6){
+    cap(4);
+    for(let y=4;y<=12;y++){ if(inEll(4,y)) put(4,y,'H'); if(inEll(19,y)) put(19,y,'H'); }
+    // colita pegada al costado de la cabeza
+    for(let y=7;y<=13;y++) put(20,y,'H');
+    put(20,6,'H'); put(20,14,'l');
+  }
+  for(let y=0;y<H;y++) for(let x=0;x<W;x++) if(g[y][x]==='H' && (y===0||g[y-1][x]==='.')) g[y][x]='l';
+
+  // ---------- rasgos ----------
+  const brow=8, eye=10, nose=12, mouth=14;
+  put(8+fx,brow,'B'); put(9+fx,brow,'B'); put(14+fx,brow,'B'); put(15+fx,brow,'B');
+  if(eyes===3){ put(8+fx,brow,'d'); put(9+fx,brow,'d'); put(14+fx,brow,'d'); put(15+fx,brow,'d'); }
+  // ojos segun tamaño/forma
+  const Li = 10+fx, Ri = 14+fx;
+  const drawEye = (inner, dir)=>{
+    const q = (dx,dy,c)=>put(inner+dir*dx, eye+dy, c);
+    if(eyeSize===0){ q(0,0,'P'); }                                              // chicos 1px
+    else if(eyeSize===1){ q(0,0,'E'); q(1,0,'P'); }                             // 2x1 blanco+negro
+    else if(eyeSize===2){ q(0,0,'P'); q(1,0,'P'); q(0,1,'P'); q(1,1,'P'); }     // 2x2 negro
+    else if(eyeSize===3){ q(0,0,'E'); q(1,0,'P'); q(0,1,'P'); q(1,1,'P'); }     // redondo con brillo
+    else if(eyeSize===4){ q(0,0,'P'); q(1,0,'P'); }                             // achinado
+    else { q(0,0,'E'); q(1,0,'E'); q(0,1,'P'); q(1,1,'P'); }                    // grandes blanco+negro
+  };
+  drawEye(Li,-1); drawEye(Ri,1);
+  if(eyes===1){ // guiño: cierra el ojo derecho
+    for(let dx=0;dx<3;dx++) for(let dy=0;dy<2;dy++) put(Ri-dx, eye+dy, 'S');
+    put(Ri,eye,'M'); put(Ri-1,eye,'M');
+  }
+  put(11+fx,nose,'d'); put(12+fx,nose,'d'); put(12+fx,nose+1,'d');
+  if(eyes===2){ put(10+fx,mouth,'M'); put(11+fx,mouth,'Z'); put(12+fx,mouth,'Z'); put(13+fx,mouth,'M'); }
+  else if(eyes===4){ put(11+fx,mouth,'Z'); put(12+fx,mouth,'Z'); }
+  else { put(10+fx,mouth,'M'); put(11+fx,mouth,'M'); put(12+fx,mouth,'M'); put(13+fx,mouth,'M'); }
+
+  // ---------- barba / bigote ----------
+  if(facial===1||facial===4){ for(let x=8;x<=15;x++) if(g[15][x]!=='.') g[15][x]='h'; put(8+fx,14,'h'); put(15+fx,14,'h'); }
+  if(facial===2||facial===4){ put(10+fx,13,'h'); put(11+fx,13,'h'); put(12+fx,13,'h'); put(13+fx,13,'h'); }
+  if(facial===3){ put(11+fx,15,'h'); put(12+fx,15,'h'); }
+
+  // ---------- gorra / vincha / gorro ----------
+  const paintW=(x,y,rx,ry)=>{ if(x>=0&&x<W&&y>=0&&y<H&&inEll(x,y,rx,ry)) put(x,y,'W'); };
+  if(hat===1){ for(let y=0;y<=4;y++) for(let x=0;x<W;x++) paintW(x,y,HRX+0.3,HRY+0.3); for(let x=5;x<=19;x++) paintW(x,5); put(11,0,'w'); put(12,0,'w'); }
+  else if(hat===2){ for(let x=4;x<=19;x++) if(g[5][x]!=='.') put(x,5,'W'); }
+  else if(hat===3){ for(let y=0;y<=6;y++) for(let x=0;x<W;x++) paintW(x,y,HRX+0.2,HRY+0.2); for(let y=7;y<=8;y++){ if(g[y][4]!=='.') put(4,y,'W'); if(g[y][19]!=='.') put(19,y,'W'); } }
+
+  // ---------- anteojos ----------
+  if(glasses===1){ for(const x of [8,9,10,13,14,15]){ put(x+fx,9,'g'); put(x+fx,11,'g'); } put(9+fx,10,'g'); put(14+fx,10,'g'); }
+  else if(glasses===2){ for(const x of [7,8,9,10,13,14,15,16]){ put(x+fx,9,'g'); put(x+fx,11,'g'); } put(8+fx,10,'g'); put(10+fx,10,'g'); put(13+fx,10,'g'); put(15+fx,10,'g'); }
+  else if(glasses===3){ for(const x of [9,10,13,14]) put(x+fx,10,'Z'); for(const x of [8,9,10,13,14,15]) put(x+fx,9,'g'); }
+
+  // ---------- cuello ----------
+  rect(10,16,13,17,'d');
+
+  // ---------- torso ----------
+  const pc=(x,y)=>{
+    if(jersey===1) return (x%3===0)?'K':'C';
+    if(jersey===2) return (Math.abs((x-12)-(y-18)*0.8)<1.6)?'K':'C';
+    if(jersey===3) return (y===20)?'K':'C';
+    if(jersey===4) return (x<=11)?'C':'K';
+    return 'C';
+  };
+  for(let y=18;y<=24;y++){
+    const x0 = 8 + (y>=23?1:0), x1 = 16 - (y>=23?1:0);
+    for(let x=x0;x<=x1;x++) put(x,y, pc(x,y));
   }
 
-  // cara con sombreado lateral
-  for(let y=0;y<N;y++) for(let x=0;x<N;x++)
-    if(inE(x,y,RX,RY)) g[y][x] = x >= 10 ? 'd' : (x <= 4 ? 'L' : 'S');
+  // mangas + brazos a los costados
+  rect(6,18,7,20, jersey===5?'K':'c'); rect(17,18,18,20, jersey===5?'K':'c');
+  rect(6,21,7,24,'S'); rect(17,21,18,24,'S');
+  put(6,25,'S'); put(7,25,'S'); put(17,25,'S'); put(18,25,'S');
 
-  if(style !== 3){
-    // linea de pelo segun estilo (corto / medio / largo)
-    const hairline = [5,6,6][style];
-    for(let y=0;y<N;y++) for(let x=0;x<N;x++)
-      if(g[y][x] !== '.' && g[y][x] !== 'H' && y <= hairline) g[y][x] = 'H';
+  // ---------- shorts ----------
+  rect(7,25,17,27,'F');
+  put(7,25,'f'); put(8,25,'f'); put(7,26,'f'); put(8,26,'f');
 
-    // pelo a los costados segun el largo
-    const sideBottom = [7,9,11][style];
-    for(let y=5;y<=sideBottom;y++){ g[y][2] = 'H'; g[y][13] = 'H'; }
-    g[6][3] = 'H'; g[6][12] = 'H';
+  // ---------- piernas y pies ----------
+  rect(9,28,11,30,'S'); rect(13,28,15,30,'S');
+  if(turn){ rect(8,31,11,31,'G'); rect(13,31,17,31,'G'); }
+  else { rect(8,31,11,31,'G'); rect(13,31,16,31,'G'); }
 
-    // brillo en la punta del pelo
-    for(let y=0;y<N;y++) for(let x=0;x<N;x++)
-      if(g[y][x] === 'H' && (!g[y-1] || g[y-1][x] === '.')) g[y][x] = 'l';
-  }
-
-  // rasgos
-  g[6][4] = 'B'; g[6][5] = 'B'; g[6][10] = 'B'; g[6][11] = 'B';   // cejas
-  g[7][4] = 'P'; g[7][5] = 'E'; g[7][10] = 'E'; g[7][11] = 'P';   // ojos
-  g[9][7] = 'd'; g[9][8] = 'd';                                   // nariz
-
-  // barba opcional
-  if(beard){
-    for(const x of [4,5,6,7,8,9,10,11]) if(g[10][x] !== '.') g[10][x] = 'h';
-    for(const x of [5,6,7,8,9,10]) if(g[11][x] !== '.') g[11][x] = 'h';
-    g[6][3] = 'h'; g[6][12] = 'h';
-  }
-
-  // boca
-  g[10][6] = 'M'; g[10][7] = 'M'; g[10][8] = 'M'; g[10][9] = 'M';
-
-  // cuello
-  for(const x of [6,7,8,9]) g[12][x] = 'd';
-
-  // camiseta
-  for(let x=3;x<=12;x++) g[13][x] = 'C';
-  for(let x=2;x<=13;x++) g[14][x] = 'C';
-  for(let x=1;x<=14;x++) g[15][x] = 'C';
-  g[13][7] = K; g[13][8] = K;                                     // cuello
-  for(let y=13;y<=15;y++) for(let x=10;x<=13;x++) if(g[y][x]==='C') g[y][x]='c';
-  g[15][7] = K; g[15][8] = K;                                     // franja
-
-  // contorno de la silueta
+  // ---------- contorno ----------
   const src = g.map(r => r.slice());
-  for(let y=0;y<N;y++) for(let x=0;x<N;x++){
+  for(let y=0;y<H;y++) for(let x=0;x<W;x++){
     if(src[y][x] !== '.') continue;
     const nb = (src[y-1]?.[x]??'.') + (src[y+1]?.[x]??'.') + (src[y]?.[x-1]??'.') + (src[y]?.[x+1]??'.');
     if(nb.replace(/\./g,'') !== '') g[y][x] = 'o';
   }
 
   const colMap = {
-    'H':HAIR, 'h':shade(HAIR,0.7), 'l':shade(HAIR,1.5), 'B':'#141210',
+    'H':HAIR, 'h':shade(HAIR,0.72), 'l':shade(HAIR,1.45), 'B':'#141210',
     'S':SKIN, 'd':shade(SKIN,0.78), 'L':shade(SKIN,1.13),
-    'E':'#f4fbff', 'P':'#1a1a1a', 'M':shade(SKIN,0.5),
-    'C':SHIRT, 'c':shade(SHIRT,0.78), 'K':K,
+    'E':'#f4fbff', 'P':'#1a1a1a', 'Z':'#431f1f', 'M':shade(SKIN,0.5),
+    'W':HATCOL, 'w':shade(HATCOL,0.7), 'g':'#20262b',
+    'C':SHIRT, 'c':shade(SHIRT,0.78), 'K':SHIRT2, 'k':shade(SHIRT2,0.78),
+    'F':'#ece7dd', 'f':'#c7c0b2', 'G':'#20242a',
     'o':'#08160d'
   };
   let rects = '';
-  for(let y=0;y<N;y++) for(let x=0;x<N;x++){
+  for(let y=0;y<H;y++) for(let x=0;x<W;x++){
     const v = g[y][x];
     if(v === '.' || !colMap[v]) continue;
     rects += `<rect x="${x}" y="${y}" width="1" height="1" fill="${colMap[v]}"/>`;
   }
-  return `<svg class="pixel-avatar" width="${size}" height="${size}" viewBox="0 0 16 16" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg" style="background:#0f2a19" aria-hidden="true">${rects}</svg>`;
+  const w = bust ? Math.round(size*18/20) : Math.round(size*W/H);
+  const vb = bust ? '3 0 18 20' : '0 0 24 32';
+  return `<svg class="pixel-avatar" width="${w}" height="${size}" viewBox="${vb}" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg" style="background:#0f2a19" aria-hidden="true">${rects}</svg>`;
 }
 function playerAvatar(p, size){ return avatarSVG(p.id, size, p.face); }
+function playerAvatarBust(p, size){ return avatarSVG(p.id, size, p.face, 'bust'); }
 
 /* ---------- render ---------- */
 function render(){
@@ -711,11 +874,13 @@ function partidosHTML(){
     const a=scoreOf(m,'A'), b=scoreOf(m,'B');
     const title = m.rivalName ? `${esc(m.teamAName)} vs ${esc(m.rivalName)}`
                               : `${esc(m.teamAName)} vs ${esc(m.teamBName)}`;
-    const mvp = m.mvpId ? `<span class="tag mvp">Figura: ${esc(pname(m.mvpId))}</span>` : '';
-    const hach = m.hachazoId ? `<span class="tag hachazo">Hachazo: ${esc(pname(m.hachazoId))}</span>` : '';
-    const pol = m.polemicaId ? `<span class="tag polemica">Polémica: ${esc(pname(m.polemicaId))}</span>` : '';
+    const _aM = awardId(m,'mvp'), _aG = awardId(m,'gk'), _aH = awardId(m,'hachazo'), _aP = awardId(m,'polemica');
+    const mvp = _aM ? `<span class="tag mvp">Figura: ${esc(pname(_aM))}</span>` : '';
+    const gk = _aG ? `<span class="tag gk">Arquero: ${esc(pname(_aG))}</span>` : '';
+    const hach = _aH ? `<span class="tag hachazo">Hachazo: ${esc(pname(_aH))}</span>` : '';
+    const pol = _aP ? `<span class="tag polemica">Polémica: ${esc(pname(_aP))}</span>` : '';
     return `<article class="card match-card" data-action="open-match" data-id="${m.id}">
-      <div class="match-top"><span class="date">${fmtDate(m.date)}</span><span class="tags">${mvp}${hach}${pol}</span></div>
+      <div class="match-top"><span class="date">${fmtDate(m.date)}</span><span class="tags">${mvp}${gk}${hach}${pol}</span></div>
       <div class="match-title">${title}</div>
       <div class="score"><b>${a}</b><span>-</span><b>${b}</b></div>
     </article>`;
@@ -814,6 +979,30 @@ function matchDetailHTML(){
   const polSelect = played.length
     ? `<select id="polemica-select"><option value="">Sin definir</option>${polOpts}</select>`
     : `<p class="muted">Asigná jugadores primero.</p>`;
+  const gkOpts = played.map(id=>`<option value="${id}" ${m.gkId===id?'selected':''}>${esc(pname(id))}</option>`).join('');
+  const gkSelect = played.length
+    ? `<select id="gk-select"><option value="">Sin definir</option>${gkOpts}</select>`
+    : `<p class="muted">Asigná jugadores primero.</p>`;
+
+  // votación
+  const voterId = getVoterId();
+  const voterOpts = played.map(id=>`<option value="${id}" ${voterId===id?'selected':''}>${esc(pname(id))}</option>`).join('');
+  const voterSelect = played.length
+    ? `<label>¿Quién sos?<select id="voter-sel"><option value="">— elegí tu nombre —</option>${voterOpts}</select></label>`
+    : '';
+  const catLabel = {mvp:'Figura', gk:'Arquero', hachazo:'Hachazo', polemica:'Polémica'};
+  const voteControls = played.length ? ['mvp','gk','hachazo','polemica'].map(cat=>{
+    const cur = (m.votes && m.votes[cat] && m.votes[cat][voterId] && m.votes[cat][voterId].id) || '';
+    const o = played.map(id=>`<option value="${id}" ${cur===id?'selected':''}>${esc(pname(id))}</option>`).join('');
+    return `<label>${catLabel[cat]}<select class="vote-sel" data-cat="${cat}"><option value="">— sin voto —</option>${o}</select></label>`;
+  }).join('') : '';
+  const voteSummary = played.length ? ['mvp','gk','hachazo','polemica'].map(cat=>{
+    const tally = voteTally(m,cat);
+    const parts = Object.entries(tally).sort((x,y)=>y[1]-x[1]).map(([id,c])=>`${esc(pname(id))} ${c}`);
+    const w = voteWinner(m,cat);
+    const win = w ? (w.tie ? 'empate' : 'gana '+esc(pname(w.id))) : 'sin votos';
+    return `<div class="vote-line"><b>${catLabel[cat]}</b>: ${parts.length?parts.join(' · '):'—'} <span class="muted">· ${win}</span></div>`;
+  }).join('') : '';
 
   return `
     <button class="btn ghost sm" data-action="back" style="margin-bottom:14px">← Volver</button>
@@ -836,17 +1025,29 @@ function matchDetailHTML(){
     </div>
 
     <div class="card">
-      <h3>Figura del partido</h3>
+      <h3>Votación <span class="hint">· 1 voto por persona</span></h3>
+      ${voterSelect}
+      ${voteControls || '<p class="muted">Asigná jugadores primero.</p>'}
+      ${voteSummary}
+    </div>
+
+    <div class="card">
+      <h3>Figura del partido <span class="hint">(manual / desempate)</span></h3>
       ${mvpSelect}
     </div>
 
     <div class="card">
-      <h3>Jugador Hachazo</h3>
+      <h3>Mejor arquero <span class="hint">(manual / si hubo)</span></h3>
+      ${gkSelect}
+    </div>
+
+    <div class="card">
+      <h3>Hachazo <span class="hint">(manual)</span></h3>
       ${hachazoSelect}
     </div>
 
     <div class="card">
-      <h3>Jugador Polémica</h3>
+      <h3>Polémica <span class="hint">(manual)</span></h3>
       ${polSelect}
     </div>
 
@@ -861,10 +1062,33 @@ function matchDetailHTML(){
   `;
 }
 
+/* ---------- Votación (figura, arquero, hachazo, polémica) ---------- */
+const VOTE_CATS = [['mvp','Figura'],['gk','Arquero'],['hachazo','Hachazo'],['polemica','Polémica']];
+function getVoterId(){ return localStorage.getItem('pmfc_voter_id') || ''; }
+function normVoter(s){ return String(s||'').trim().toLowerCase(); }
+function voteTally(m, cat){
+  const v = (m.votes && m.votes[cat]) || {};
+  const c = {};
+  Object.values(v).forEach(b=>{ if(b && b.id) c[b.id] = (c[b.id]||0) + 1; });
+  return c;
+}
+function voteWinner(m, cat){
+  const c = voteTally(m, cat);
+  let best=null, max=0, tie=false;
+  for(const k in c){ if(c[k] > max){ max=c[k]; best=k; tie=false; } else if(c[k]===max){ tie=true; } }
+  return max>0 ? {id:best, max, tie} : null;
+}
+function awardId(m, cat){
+  const w = voteWinner(m, cat);
+  const manual = { mvp:m.mvpId, gk:m.gkId, hachazo:m.hachazoId, polemica:m.polemicaId }[cat];
+  if(w && !w.tie) return w.id;
+  return manual || (w ? w.id : null);
+}
+
 /* ---------- Estadísticas ---------- */
 function computeStats(){
   const st = {};
-  data.players.forEach(p=> st[p.id]={pj:0,goles:0,asist:0,mvp:0,v:0,d:0,e:0,escabio:0,hachazos:0,polemicas:0,racha:0,rachaAct:0});
+  data.players.forEach(p=> st[p.id]={pj:0,goles:0,asist:0,mvp:0,gk:0,v:0,d:0,e:0,escabio:0,hachazos:0,polemicas:0,racha:0,rachaAct:0});
   data.matches.forEach(m=>{
     const a = scoreOf(m,'A'), b = scoreOf(m,'B');
     const resA = a>b ? 'v' : a<b ? 'd' : 'e';
@@ -875,9 +1099,11 @@ function computeStats(){
       if(ev.scorerId && st[ev.scorerId]) st[ev.scorerId].goles++;
       if(ev.assistId && st[ev.assistId]) st[ev.assistId].asist++;
     });
-    if(m.mvpId && st[m.mvpId]) st[m.mvpId].mvp++;
-    if(m.hachazoId && st[m.hachazoId]) st[m.hachazoId].hachazos++;
-    if(m.polemicaId && st[m.polemicaId]) st[m.polemicaId].polemicas++;
+    const _aM = awardId(m,'mvp'), _aG = awardId(m,'gk'), _aH = awardId(m,'hachazo'), _aP = awardId(m,'polemica');
+    if(_aM && st[_aM]) st[_aM].mvp++;
+    if(_aG && st[_aG]) st[_aG].gk++;
+    if(_aH && st[_aH]) st[_aH].hachazos++;
+    if(_aP && st[_aP]) st[_aP].polemicas++;
     data.players.forEach(p=>{ st[p.id].escabio += escQty(m, p.id); });
   });
   // racha invicta (actual y mejor historica) por jugador
@@ -903,6 +1129,7 @@ function rankCats(){
     asist:  ['Asistencias',      s=>s.asist],
     ga:     ['Goles + Asist.',   s=>s.goles+s.asist],
     mvp:    ['Figuras',          s=>s.mvp],
+    gk:     ['Mejor arquero',    s=>s.gk],
     pj:     ['Partidos jugados', s=>s.pj],
     v:      ['Victorias',        s=>s.v],
     d:      ['Derrotas',         s=>s.d],
@@ -926,7 +1153,7 @@ function rankingHTML(){
   const pod = rows.slice(0,3).map((r,i)=>`
     <div class="podium-item p${i+1}">
       <span class="medal">${i+1}°</span>
-      ${playerAvatar(r.p,54)}
+      ${playerAvatarBust(r.p,54)}
       <span class="podium-name">${esc(pname(r.p.id))}</span>
       <span class="podium-val">${fn(r.s)}</span>
       <span class="podium-cat">${esc(label)}</span>
@@ -934,7 +1161,7 @@ function rankingHTML(){
   const rest = rows.map((r,i)=>`
     <div class="rank-row clickable" data-action="open-player" data-id="${r.p.id}">
       <span class="rank-pos">${i+1}</span>
-      ${playerAvatar(r.p,30)}
+      ${playerAvatarBust(r.p,30)}
       <span class="rank-name">${esc(r.p.name)}${invBadge(r.p)} <span class="rank-sub">· ${r.s.pj} PJ</span></span>
       <span class="rank-val">${fn(r.s)}</span>
     </div>`).join('');
@@ -944,7 +1171,7 @@ function rankingHTML(){
 function statsHTML(){
   const st = computeStats();
   const rows = data.players.map(p=>({p, s:st[p.id]}))
-    .filter(r=> r.s.pj || r.s.goles || r.s.asist || r.s.mvp || r.s.escabio)
+    .filter(r=> r.s.pj || r.s.goles || r.s.asist || r.s.mvp || r.s.gk || r.s.escabio)
     .sort((x,y)=> y.s.goles-x.s.goles || y.s.asist-x.s.asist || y.s.v-x.s.v || x.p.name.localeCompare(y.p.name));
   const head = `<div class="section-head"><h2>Estadísticas</h2></div>`;
   if(!rows.length){
@@ -954,13 +1181,13 @@ function statsHTML(){
   const topLoss = rows.filter(r=>r.s.d>0).sort((x,y)=>y.s.d-x.s.d)[0];
   const summary = `<div class="card summary">
     <div class="sum-item"><span class="lbl">Más ganó</span>
-      <span class="val">${topWin?`${playerAvatar(topWin.p,26)}<b>${esc(pname(topWin.p.id))}</b><span class="pill win">${topWin.s.v} V</span>`:'<span class="muted">—</span>'}</span></div>
+      <span class="val">${topWin?`${playerAvatarBust(topWin.p,26)}<b>${esc(pname(topWin.p.id))}</b><span class="pill win">${topWin.s.v} V</span>`:'<span class="muted">—</span>'}</span></div>
     <div class="sum-item"><span class="lbl">Más perdió</span>
-      <span class="val">${topLoss?`${playerAvatar(topLoss.p,26)}<b>${esc(pname(topLoss.p.id))}</b><span class="pill loss">${topLoss.s.d} D</span>`:'<span class="muted">—</span>'}</span></div>
+      <span class="val">${topLoss?`${playerAvatarBust(topLoss.p,26)}<b>${esc(pname(topLoss.p.id))}</b><span class="pill loss">${topLoss.s.d} D</span>`:'<span class="muted">—</span>'}</span></div>
   </div>`;
   const body = rows.map((r,i)=>`<tr>
     <td class="c"><span class="rk">${i+1}</span></td>
-    <td class="clickable" data-action="open-player" data-id="${r.p.id}"><span class="pname">${playerAvatar(r.p,26)}${r.p.number?`<span class="num">${esc(r.p.number)}</span>`:''}${esc(r.p.name)}${invBadge(r.p)}</span></td>
+    <td class="clickable" data-action="open-player" data-id="${r.p.id}"><span class="pname">${playerAvatarBust(r.p,26)}${r.p.number?`<span class="num">${esc(r.p.number)}</span>`:''}${esc(r.p.name)}${invBadge(r.p)}</span></td>
     <td class="c">${r.s.pj}</td>
     <td class="c"><b>${r.s.goles}</b></td>
     <td class="c">${r.s.asist}</td>
@@ -972,12 +1199,13 @@ function statsHTML(){
     <td class="c loss">${r.s.polemicas||''}</td>
     <td class="c">${r.s.escabio||''}</td>
     <td class="c">${r.s.mvp||''}</td>
+    <td class="c">${r.s.gk||''}</td>
   </tr>`).join('');
   return head + rankingHTML() + summary + `<div class="card"><div class="table-wrap"><table class="table">
-    <thead><tr><th class="c">#</th><th>Jugador</th><th class="c">PJ</th><th class="c">G</th><th class="c">A</th><th class="c">V</th><th class="c">E</th><th class="c">D</th><th class="c">Rach</th><th class="c">Hach</th><th class="c">Polém</th><th class="c">Esc</th><th class="c">MVP</th></tr></thead>
+    <thead><tr><th class="c">#</th><th>Jugador</th><th class="c">PJ</th><th class="c">G</th><th class="c">A</th><th class="c">V</th><th class="c">E</th><th class="c">D</th><th class="c">Rach</th><th class="c">Hach</th><th class="c">Polém</th><th class="c">Esc</th><th class="c">MVP</th><th class="c">Arq</th></tr></thead>
     <tbody>${body}</tbody>
   </table></div></div>
-  <p class="muted" style="text-align:center">PJ: jugados · G: goles · A: asistencias · V: ganados · E: empatados · D: perdidos · Rach: mejor racha invicta · Hach: hachazos · Polém: polémicas · Esc: escabios · MVP: figura</p>`;
+  <p class="muted" style="text-align:center">PJ: jugados · G: goles · A: asistencias · V: ganados · E: empatados · D: perdidos · Rach: mejor racha invicta · Hach: hachazos · Polém: polémicas · Esc: escabios · MVP: figura · Arq: mejor arquero</p>`;
 }
 
 /* ---------- Ficha de jugador ---------- */
@@ -985,7 +1213,8 @@ function playerDetailHTML(){
   const p = getPlayer(currentPlayerId);
   if(!p){ currentPlayerId=null; view=playerBackView; return view==='estadisticas'?statsHTML():jugadoresHTML(); }
   if(playerEditMode){
-    if(!newFace) newFace = Object.assign({}, p.face || randomFace());
+    if(!newFace) newFace = normFace(p.face);
+    if(!newPositions) newPositions = playerPositions(p).slice();
     return `
       <button class="btn ghost sm" data-action="cancel-edit" style="margin-bottom:14px">← Volver</button>
       <div class="card">
@@ -995,11 +1224,8 @@ function playerDetailHTML(){
           <label>Apodo <span class="hint">(opcional)</span><input id="e-nick" type="text" value="${esc(p.nickname||'')}" autocomplete="off"></label>
           <label>Dorsal <span class="hint">(opcional)</span><input id="e-num" type="text" value="${esc(p.number||'')}" inputmode="numeric" autocomplete="off"></label>
         </div>
-        <label>Posición
-          <select id="e-pos">
-            ${['','Arquero','Defensor','Mediocampista','Delantero'].map(o=>`<option value="${o}" ${(p.position||'')===o?'selected':''}>${o||'Sin definir'}</option>`).join('')}
-          </select>
-        </label>
+        <label style="margin-bottom:6px">Posición(es) <span class="hint">(podés elegir varias)</span></label>
+        ${posPickerHTML()}
         <label class="check"><input type="checkbox" id="e-guest" ${p.guest?'checked':''}> Invitado (no del plantel)</label>
         ${faceEditorHTML()}
         <div class="grid2">
@@ -1008,7 +1234,7 @@ function playerDetailHTML(){
         </div>
       </div>`;
   }
-  const s = computeStats()[p.id] || {pj:0,goles:0,asist:0,mvp:0,v:0,d:0,e:0,escabio:0,hachazos:0,polemicas:0,racha:0,rachaAct:0};
+  const s = computeStats()[p.id] || {pj:0,goles:0,asist:0,mvp:0,gk:0,v:0,d:0,e:0,escabio:0,hachazos:0,polemicas:0,racha:0,rachaAct:0};
   const played = data.matches
     .filter(m=>(m.teamA||[]).includes(p.id) || (m.teamB||[]).includes(p.id))
     .sort((a,b)=>(a.date||'').localeCompare(b.date||''));
@@ -1016,7 +1242,7 @@ function playerDetailHTML(){
   const invictos = s.v + s.e;
   const tiles = [['PJ',s.pj,''],['V',s.v,'win'],['E',s.e,''],['D',s.d,'loss'],
                  ['Goles',s.goles,''],['Asist.',s.asist,''],['Hachazos',s.hachazos,'loss'],['Polémica',s.polemicas,'loss'],
-                 ['Figura',s.mvp,'gold'],['Escabio',s.escabio,'gold']]
+                 ['Figura',s.mvp,'gold'],['Arquero',s.gk,'gold'],['Escabio',s.escabio,'gold']]
     .map(([l,v,c])=>`<div class="tile"><span class="tile-num ${c}">${v}</span><span class="tile-lbl">${l}</span></div>`).join('');
 
   const log = played.length ? played.map(m=>{
@@ -1028,16 +1254,19 @@ function playerDetailHTML(){
     const g = (m.events||[]).filter(ev=> ev.side===side && ev.scorerId===p.id).length;
     const as = (m.events||[]).filter(ev=> ev.side===side && ev.assistId===p.id).length;
     const oppName = side==='A' ? m.teamBName : m.teamAName;
-    const mvp = m.mvpId===p.id ? '<span class="tag mvp">Figura</span>' : '';
+    const mvp = awardId(m,'mvp')===p.id ? '<span class="tag mvp">Figura</span>' : '';
+    const gk = awardId(m,'gk')===p.id ? '<span class="tag gk">Arquero</span>' : '';
     const contrib = `${g?`<span class="pill gold">${g} G</span>`:''}${as?`<span class="pill">${as} A</span>`:''}`;
     return `<div class="log-row">
       <span class="res ${rc}">${res}</span>
       <div class="log-info"><span class="log-date">${fmtDate(m.date)}</span>
-        <span class="log-vs">vs ${esc(oppName)}</span>${mvp}</div>
+        <span class="log-vs">vs ${esc(oppName)}</span>${mvp}${gk}</div>
       <span class="log-score">${my}-${opp}</span>
       <span class="log-contrib">${contrib}</span>
     </div>`;
   }).join('') : '<p class="muted">Todavía no jugó partidos.</p>';
+
+  const poss = playerPositions(p);
 
   return `
     <div style="display:flex;gap:8px;margin-bottom:14px">
@@ -1050,7 +1279,7 @@ function playerDetailHTML(){
         <div>
           <h2>${esc(p.name)}${invBadge(p)}</h2>
           ${p.nickname?`<p class="muted">"${esc(p.nickname)}"</p>`:''}
-          <p class="muted">${p.number?'Dorsal '+esc(p.number):''}${p.number&&p.position?' · ':''}${p.position?esc(p.position):''}</p>
+          <p class="muted">${p.number?'Dorsal '+esc(p.number):''}${p.number&&poss.length?' · ':''}${poss.length?esc(poss.join(' · ')):''}</p>
         </div>
       </div>
       <div class="tiles">${tiles}</div>
@@ -1065,30 +1294,75 @@ function playerDetailHTML(){
 }
 
 /* ---------- Jugadores ---------- */
+function normFace(f){
+  f = f || {};
+  return Object.assign({
+    skin:0, hair:0, shirt:0, shirt2:0, style:0, eyes:0, eyeSize:2,
+    facial: f.beard ? 1 : 0, hat:0, hatColor:0, glasses:0, jersey:0
+  }, f);
+}
+/* ---------- Posiciones ---------- */
+const POS_GROUPS = [
+  ['Arquero',   [['PO','Portero']]],
+  ['Defensa',   [['DFC','Defensor central'],['LT','Lateral'],['LD','Lateral derecho'],['LI','Lateral izquierdo'],['CAD','Carrilero derecho'],['CAI','Carrilero izquierdo']]],
+  ['Mediocampo',[['MCD','Mediocentro defensivo'],['MC','Mediocentro'],['MCO','Mediocentro ofensivo'],['MD','Mediocampista derecho'],['MI','Mediocampista izquierdo'],['MP','Mediapunta']]],
+  ['Delantera', [['ED','Extremo derecho'],['EI','Extremo izquierdo'],['SD','Segundo delantero'],['DC','Delantero centro'],['PT','Punta']]]
+];
+const POS_LEGACY = { 'Arquero':'PO', 'Defensor':'DFC', 'Mediocampista':'MC', 'Delantero':'DC' };
+const POS_NAME = {};
+POS_GROUPS.forEach(([,arr])=>arr.forEach(([v,l])=>{ POS_NAME[v] = l; }));
+function playerPositions(p){
+  if(Array.isArray(p.positions)) return p.positions.filter(Boolean);
+  if(p.position){ return [POS_LEGACY[p.position] || p.position]; }
+  return [];
+}
+function posPickerHTML(){
+  const cur = newPositions || [];
+  return `<div class="face-controls" style="margin-bottom:14px">${
+    POS_GROUPS.map(([g,arr])=>`<div class="face-row"><span class="face-lbl">${g}</span>${
+      arr.map(([v,l])=>`<button type="button" class="face-pill ${cur.includes(v)?'on':''}" data-action="pos-toggle" data-val="${v}" title="${l}">${v}</button>`).join('')
+    }</div>`).join('')
+  }</div>`;
+}
+function updatePosPills(){
+  const cur = newPositions || [];
+  document.querySelectorAll('[data-action="pos-toggle"]').forEach(b=>b.classList.toggle('on', cur.includes(b.dataset.val)));
+}
 function swatch(key, i, color){
   return `<button type="button" class="swatch ${newFace[key]===i?'on':''}" style="background:${color}" data-action="face-set" data-key="${key}" data-val="${i}" aria-label="${key} ${i}"></button>`;
+}
+function faceOptRow(label, arr, key, cur){
+  return `<div class="face-row"><span class="face-lbl">${label}</span>${
+    arr.map(([l,v])=>`<button type="button" class="face-pill ${(cur!=null?cur:0)===v?'on':''}" data-action="face-set" data-key="${key}" data-val="${v}">${l}</button>`).join('')
+  }</div>`;
 }
 function faceEditorHTML(){
   return `<div class="face-editor">
     <div class="face-preview" id="face-preview">${avatarSVG('new-face',64,newFace)}</div>
     <div class="face-controls">
+      ${faceOptRow('Corte', AV_STYLE, 'style', newFace.style)}
+      ${faceOptRow('Ojos', AV_EYESIZE, 'eyeSize', newFace.eyeSize)}
+      ${faceOptRow('Cara', AV_EYES, 'eyes', newFace.eyes)}
+      ${faceOptRow('Barba', AV_FACIAL, 'facial', newFace.facial)}
+      ${faceOptRow('Anteojos', AV_GLASSES, 'glasses', newFace.glasses)}
+      ${faceOptRow('Cabeza', AV_HAT, 'hat', newFace.hat)}
       <div class="face-row"><span class="face-lbl">Piel</span>${AV_SKIN.map((c,i)=>swatch('skin',i,c)).join('')}</div>
       <div class="face-row"><span class="face-lbl">Pelo</span>${AV_HAIR.map((c,i)=>swatch('hair',i,c)).join('')}</div>
+      <div class="face-row"><span class="face-lbl">Gorra</span>${AV_SHIRT.map((c,i)=>swatch('hatColor',i,c)).join('')}</div>
       <div class="face-row"><span class="face-lbl">Camiseta</span>${AV_SHIRT.map((c,i)=>swatch('shirt',i,c)).join('')}</div>
-      <div class="face-row"><span class="face-lbl">Corte</span>
-        ${[['Corto',0],['Medio',1],['Largo',2],['Pelado',3]].map(([l,v])=>`<button type="button" class="face-pill ${newFace.style===v?'on':''}" data-action="face-set" data-key="style" data-val="${v}">${l}</button>`).join('')}
-        <button type="button" class="face-pill ${newFace.beard?'on':''}" data-action="face-set" data-key="beard" data-val="1">Barba</button>
-      </div>
+      <div class="face-row"><span class="face-lbl">Camiseta 2</span>${AV_SHIRT.map((c,i)=>swatch('shirt2',i,c)).join('')}</div>
+      ${faceOptRow('Diseño', AV_JERSEY, 'jersey', newFace.jersey)}
     </div>
     <button class="btn ghost sm" data-action="face-random">Aleatorio</button>
   </div>`;
 }
 function jugadoresHTML(){
   if(!newFace) newFace = randomFace();
+  if(!newPositions) newPositions = [];
   const rowHTML = p => `<div class="assign-row clickable" data-action="open-player" data-id="${p.id}">
       <span class="pname">${playerAvatar(p,30)}${p.number?`<span class="num">${esc(p.number)}</span>`:''}${esc(p.name)}
         ${p.nickname?`<span class="muted">· ${esc(p.nickname)}</span>`:''}
-        ${p.position?`<span class="muted">(${esc(p.position)})</span>`:''}${invBadge(p)}</span>
+        ${playerPositions(p).length?`<span class="muted">(${esc(playerPositions(p).join(' · '))})</span>`:''}${invBadge(p)}</span>
       <button class="icon-btn" data-action="del-player" data-id="${p.id}">×</button>
     </div>`;
   const roster = data.players.filter(p=>!p.guest);
@@ -1108,13 +1382,8 @@ function jugadoresHTML(){
           <input id="p-num" type="text" inputmode="numeric" placeholder="Ej: 10" autocomplete="off">
         </label>
       </div>
-      <label>Posición <span class="hint">(opcional)</span>
-        <select id="p-pos">
-          <option value="">Sin definir</option>
-          <option>Arquero</option><option>Defensor</option><option>Mediocampista</option>
-          <option>Delantero</option>
-        </select>
-      </label>
+      <label style="margin-bottom:6px">Posición(es) <span class="hint">(opcional · podés elegir varias)</span></label>
+      ${posPickerHTML()}
       <label class="check"><input type="checkbox" id="p-guest"> Invitado (no del plantel)</label>
       ${faceEditorHTML()}
       <button class="btn primary block" data-action="add-player">Agregar al plantel</button>
@@ -1150,18 +1419,19 @@ function jugadoresHTML(){
         <button class="btn ghost sm" data-action="import">Importar</button>
         <button class="btn danger sm" data-action="reset">Borrar todo</button>
       </div>
+      ${backupsHTML()}
     </div>
 
     <div class="card">
       <h3>Ayuda</h3>
       <details class="help" open><summary>Crear un jugador</summary>
-        <p class="muted">En <b>Jugadores</b> completá nombre, apodo, dorsal y posición. Elegí la cara (piel, pelo, corte, camiseta o "Aleatorio") y tocá <b>Agregar al plantel</b>.</p></details>
+        <p class="muted">En <b>Jugadores</b> completá nombre, apodo, dorsal y posición(es). Personalizá el muñeco estilo arcade: corte, cara, barba, anteojos, cabeza (gorra/vincha/gorro), piel, pelo y camiseta (color, segundo color y diseño) o "Aleatorio". Después tocá <b>Agregar al plantel</b>.</p></details>
       <details class="help"><summary>Crear un partido</summary>
         <p class="muted">En <b>Partidos</b> tocá <b>+ Nuevo partido</b>, poné la fecha y elegí <b>Interno</b> (7 vs 7 entre nosotros) o <b>Contra un rival</b>.</p></details>
       <details class="help"><summary>Cargar goles y resultado</summary>
         <p class="muted">Abrí el partido. En <b>Armar los equipos</b> tocá A o B para asignar a cada uno. Después usá <b>+ Gol</b> (elegís goleador y asistencia). El marcador se calcula solo.</p></details>
-      <details class="help"><summary>Figura del partido</summary>
-        <p class="muted">Dentro del partido, en <b>Figura del partido</b> elegí de la lista. Después se cuenta en el ranking y en la ficha.</p></details>
+      <details class="help"><summary>Figura y mejor arquero del partido</summary>
+        <p class="muted">Dentro del partido elegí la <b>Figura</b> (MVP) y, si atajó alguien, el <b>Mejor arquero</b> (podés marcarlo aparte del MVP). Después se cuentan en el ranking y en la ficha.</p></details>
       <details class="help"><summary>Post-partido: escabio y comentarios</summary>
         <p class="muted">En <b>Partidos</b>, abajo, elegí el partido en el selector. Cargá el <b>Escabio</b> con − / + y dejá <b>Comentarios</b> con tu nombre.</p></details>
       <details class="help"><summary>Ranking y estadísticas</summary>
@@ -1235,7 +1505,7 @@ function createMatch(){
     teamAName: mode==='rival' ? 'Piel Morena' : 'Equipo A',
     teamBName: mode==='rival' ? rival : 'Equipo B',
     rivalName: rival,
-    teamA: [], teamB: [], events: [], mvpId: null
+    teamA: [], teamB: [], events: [], mvpId: null, gkId: null
   };
   data.matches.push(m); save(); persistMatch(m); closeModal();
   currentMatchId = m.id; view='partidos'; render();
@@ -1300,12 +1570,12 @@ function addPlayer(){
     id: uid(), name,
     nickname: $('#p-nick').value.trim(),
     number: $('#p-num').value.trim(),
-    position: $('#p-pos').value,
+    positions: newPositions ? newPositions.slice() : [],
     guest: $('#p-guest').checked,
     face: Object.assign({}, newFace)
   };
   data.players.push(p);
-  newFace = null;
+  newFace = null; newPositions = null;
   save(); persistPlayer(p); render();
 }
 function addGuest(side){
@@ -1313,7 +1583,7 @@ function addGuest(side){
   const name = el ? el.value.trim() : '';
   if(!name){ alert('Escribí el nombre del invitado.'); return; }
   const m = data.matches.find(x=>x.id===currentMatchId); if(!m) return;
-  const p = { id: uid(), name, nickname:'', number:'', position:'', guest:true, face: randomFace() };
+  const p = { id: uid(), name, nickname:'', number:'', positions:[], guest:true, face: randomFace() };
   data.players.push(p);
   if(side === 'B') m.teamB.push(p.id); else m.teamA.push(p.id);
   save(); persistPlayer(p); persistMatch(m); render();
@@ -1325,10 +1595,10 @@ function savePlayer(){
   p.name = name;
   p.nickname = document.getElementById('e-nick').value.trim();
   p.number = document.getElementById('e-num').value.trim();
-  p.position = document.getElementById('e-pos').value;
+  p.positions = newPositions ? newPositions.slice() : playerPositions(p);
   p.guest = document.getElementById('e-guest').checked;
   p.face = Object.assign({}, newFace);
-  newFace = null;
+  newFace = null; newPositions = null;
   playerEditMode = false;
   save(); persistPlayer(p); render();
 }
@@ -1336,10 +1606,7 @@ function updateFacePreview(){
   const el = document.getElementById('face-preview');
   if(el) el.innerHTML = avatarSVG('new-face',64,newFace);
   document.querySelectorAll('[data-action="face-set"]').forEach(sw=>{
-    const k = sw.dataset.key;
-    const v = sw.dataset.val;
-    const on = k==='beard' ? (v==='1')===!!newFace.beard : String(newFace[k])===v;
-    sw.classList.toggle('on', on);
+    sw.classList.toggle('on', String(newFace[sw.dataset.key])===sw.dataset.val);
   });
 }
 function delPlayer(id){
@@ -1351,6 +1618,7 @@ function delPlayer(id){
     m.teamB = m.teamB.filter(x=>x!==id);
     m.events = (m.events||[]).filter(e=> e.scorerId!==id && e.assistId!==id);
     if(m.mvpId===id) m.mvpId=null;
+    if(m.gkId===id) m.gkId=null;
   });
   save(); removePlayerDoc(id); data.matches.forEach(persistMatch); render();
 }
@@ -1557,17 +1825,22 @@ document.addEventListener('click', e=>{
     case 'add-guest': addGuest(t.dataset.side); break;
     case 'del-player': delPlayer(id); break;
     case 'face-set': {
-      const k = t.dataset.key;
-      if(k === 'beard') newFace.beard = !newFace.beard;
-      else newFace[k] = parseInt(t.dataset.val, 10);
+      newFace[t.dataset.key] = parseInt(t.dataset.val, 10);
       updateFacePreview();
       break;
     }
     case 'face-random': newFace = randomFace(); updateFacePreview(); break;
+    case 'pos-toggle': {
+      if(!newPositions) newPositions = [];
+      const v = t.dataset.val, i = newPositions.indexOf(v);
+      if(i >= 0) newPositions.splice(i, 1); else newPositions.push(v);
+      updatePosPills();
+      break;
+    }
     case 'open-player': playerBackView = view; currentPlayerId = id; playerEditMode = false; view='jugador'; render(); break;
-    case 'player-back': playerEditMode = false; newFace = null; view = playerBackView; currentPlayerId = null; render(); break;
-    case 'edit-player': { const p = getPlayer(currentPlayerId); if(!p) break; newFace = Object.assign({}, p.face || randomFace()); playerEditMode = true; render(); break; }
-    case 'cancel-edit': playerEditMode = false; newFace = null; render(); break;
+    case 'player-back': playerEditMode = false; newFace = null; newPositions = null; view = playerBackView; currentPlayerId = null; render(); break;
+    case 'edit-player': { const p = getPlayer(currentPlayerId); if(!p) break; newFace = normFace(p.face); newPositions = playerPositions(p).slice(); playerEditMode = true; render(); break; }
+    case 'cancel-edit': playerEditMode = false; newFace = null; newPositions = null; render(); break;
     case 'save-player': savePlayer(); break;
     case 'toggle-team': toggleTeam(id, t.dataset.side); break;
     case 'esc-inc': escAdjust(id, 1); break;
@@ -1588,6 +1861,9 @@ document.addEventListener('click', e=>{
     case 'cloud-help': openCloudHelp(); break;
     case 'toggle-sfx': toggleSfx(); break;
     case 'toggle-music': toggleHimno(); break;
+    case 'bk-now': createBackup('manual'); break;
+    case 'bk-download': downloadBackup(id); break;
+    case 'bk-restore': restoreBackup(id); break;
   }
 });
 document.addEventListener('change', e=>{
@@ -1600,6 +1876,10 @@ document.addEventListener('change', e=>{
     const m = data.matches.find(x=>x.id===currentMatchId);
     if(m){ m.mvpId = e.target.value || null; sfx('mvp'); save(); persistMatch(m); }
   }
+  if(e.target.id==='gk-select'){
+    const m = data.matches.find(x=>x.id===currentMatchId);
+    if(m){ m.gkId = e.target.value || null; sfx('mvp'); save(); persistMatch(m); render(); }
+  }
   if(e.target.id==='hachazo-select'){
     const m = data.matches.find(x=>x.id===currentMatchId) || data.matches.find(x=>x.id===escabioMatchId);
     if(m){ m.hachazoId = e.target.value || null; save(); persistMatch(m); render(); }
@@ -1607,6 +1887,20 @@ document.addEventListener('change', e=>{
   if(e.target.id==='polemica-select'){
     const m = data.matches.find(x=>x.id===currentMatchId) || data.matches.find(x=>x.id===escabioMatchId);
     if(m){ m.polemicaId = e.target.value || null; save(); persistMatch(m); render(); }
+  }
+  if(e.target.classList && e.target.classList.contains('vote-sel')){
+    const m = data.matches.find(x=>x.id===currentMatchId); if(!m) return;
+    const voterId = getVoterId();
+    if(!voterId){ alert('Elegí tu nombre arriba para votar.'); e.target.value=''; return; }
+    const cat = e.target.dataset.cat;
+    m.votes = m.votes || {}; m.votes[cat] = m.votes[cat] || {};
+    if(e.target.value) m.votes[cat][voterId] = { by: pname(voterId), id:e.target.value };
+    else delete m.votes[cat][voterId];
+    save(); persistMatch(m); render();
+  }
+  if(e.target.id==='voter-sel'){
+    localStorage.setItem('pmfc_voter_id', e.target.value);
+    render();
   }
 });
 
