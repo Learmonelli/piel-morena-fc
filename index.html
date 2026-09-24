@@ -29,6 +29,25 @@
     min-height:100vh;
   }
   .app{max-width:720px;margin:0 auto;padding:0 16px;position:relative;z-index:1}
+  .demo-banner{background:linear-gradient(145deg,#ffd23f,var(--gold-d));color:#2a1706;
+    font-weight:800;text-align:center;border-radius:10px;padding:9px 12px;margin:12px 0 0;
+    font-size:14px;letter-spacing:.5px;text-transform:uppercase;box-shadow:3px 3px 0 rgba(0,0,0,.4)}
+
+  body.demo{
+    --bg:#0a1024; --bg2:#122140; --card:#122140; --card2:#1b3160; --line:#2f4f8f;
+    --txt:#ffffff; --muted:#aac2ea;
+    --gold:#febe10; --gold-d:#d19a00; --burgundy:#00529f; --purple:#5b8ad6;
+    background:radial-gradient(1200px 600px at 50% -200px,#123a7a 0%,var(--bg) 60%) fixed;
+  }
+  body.demo .music-btn,body.demo .tabs{background:#16294d}
+  body.demo input,body.demo select,body.demo textarea,
+  body.demo .tile,body.demo .podium-item{background:#0c1830}
+  body.demo .tabs,body.demo .card,body.demo input,body.demo select,
+  body.demo textarea,body.demo .face-preview{border-color:#081326}
+  body.demo pre.rules{background:#0c1830}
+  body.demo .assign-row,body.demo .comment,body.demo .goal-row,
+  body.demo .log-row,body.demo .rank-row,body.demo details.help,
+  body.demo .table td{border-color:rgba(255,255,255,.09)}
 
   /* Canchita 8-bit de fondo */
   #pitch-bg{position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:.38}
@@ -374,7 +393,7 @@
       </svg>
       <div>
         <h1>Piel Morena FC</h1>
-        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v47</span></p>
+        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v50</span></p>
       </div>
     </div>
     <div class="header-btns">
@@ -388,7 +407,8 @@
 <div id="modal-root"></div>
 
 <script>
-const KEY = 'pielmorenafc_v1';
+const DEMO = /[?&]demo(=|&|$)/.test(location.search) || /demo\.html$/i.test(location.pathname);
+const KEY = DEMO ? 'pielmorenafc_demo_v1' : 'pielmorenafc_v1';
 let data = load();
 let view = 'partidos';
 let currentMatchId = null;
@@ -410,6 +430,101 @@ function load(){
 }
 function save(){ localStorage.setItem(KEY, JSON.stringify(data)); }
 
+/* ---------- Modo demo (datos de ejemplo, sin nube) ---------- */
+function demoRand(seed){
+  return function(){
+    seed = seed + 0x6D2B79F5 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+function demoSeed(){
+  const rnd = demoRand(20260924);
+  const ri = n => Math.floor(rnd()*n);
+  const pick = a => a[ri(a.length)];
+  const shuffled = a => { a = a.slice(); for(let i=a.length-1;i>0;i--){ const j=ri(i+1); [a[i],a[j]]=[a[j],a[i]]; } return a; };
+
+  const roster = [
+    ['Juan Pérez','Tuti','10',['MCO','MC']],
+    ['Sofía Ramírez','Sofi','7',['DC','SD']],
+    ['Nico Fernández','Nico','1',['PO']],
+    ['Camila Duarte','Cami','4',['DFC','MCD']],
+    ['Diego Sosa','Diegui','2',['LT','CAI']],
+    ['Valentina Ríos','Vale','5',['MC','MCD']],
+    ['Fede Acuña','Fede','9',['DC','PT']],
+    ['Martina López','Martu','8',['MD','MCO']],
+    ['Santi Vera','Santi','3',['LD','DFC']],
+    ['Julieta Benítez','Juli','11',['EI','ED']],
+    ['Gonza Ruiz','Gonza','6',['MCD','DFC']],
+    ['Agustina Pereyra','Agus','14',['MI','MC']]
+  ];
+  const players = roster.map(([name,nickname,number,positions],i)=>({
+    id:'demo_p'+i, name, nickname, number, positions, guest:false, face: randomFace()
+  }));
+  players.push({ id:'demo_guest', name:'Rocío (invitada)', nickname:'Rocío', number:'', positions:['MC'], guest:true, face: randomFace() });
+
+  const teamNames = ['Equipo Negro','Equipo Rojo','Equipo Verde','Equipo Azul','Equipo Blanco','Equipo Violeta'];
+  const rivals = ['Los Guapos FC','Barrio Sur FC','Deportivo Resaca','Los Pibes'];
+  const commentsPool = [
+    ['Tuti','Gran partido, la rompimos.'],
+    ['Sofi','El segundo tiempo fue nuestro.'],
+    ['Diegui','Faltó puntería, pero ganamos.'],
+    ['Cami','Ese gol de media cancha fue una locura.'],
+    ['Santi','Arrancamos dormidos y lo dimos vuelta.'],
+    ['Martu','MVP merecido.'],
+    ['Vale','Hay que mejorar la marca en el mediocampo.'],
+    ['Agus','Buen finde de fútbol, se festeja.']
+  ];
+
+  const matches = [];
+  const today = new Date();
+  for(let i=0;i<7;i++){
+    const d = new Date(today.getTime() - i*7*86400000);
+    const date = d.toISOString().slice(0,10);
+    const isRival = (i % 3 === 2);
+    const m = { id:'demo_m'+i, date, mode: isRival?'rival':'interno', teamA:[], teamB:[], events:[],
+                mvpId:null, gkId:null, hachazoId:null, polemicaId:null, escabio:{}, comments:[], votes:{} };
+    const pool = shuffled(players.filter(p=>!p.guest).map(p=>p.id)).slice(0, isRival?10:12);
+    if(isRival){
+      m.teamAName = 'Fulbito FC';
+      m.teamBName = pick(rivals);
+      m.rivalName = m.teamBName;
+      m.teamA = pool;
+    } else {
+      m.teamAName = pick(teamNames);
+      m.teamBName = pick(teamNames.filter(n=>n!==m.teamAName));
+      const half = Math.ceil(pool.length/2);
+      m.teamA = pool.slice(0,half);
+      m.teamB = pool.slice(half);
+    }
+    const all = isRival ? m.teamA : [...m.teamA, ...m.teamB];
+    const totalGoals = 2 + ri(6);
+    for(let g=0; g<totalGoals; g++){
+      if(isRival && rnd() < 0.5){
+        m.events.push({ id:'demo_m'+i+'_e'+g, side:'B', scorerId:'', assistId:'' });
+      } else {
+        const rosterSide = (isRival || rnd() < 0.5) ? m.teamA : m.teamB;
+        const side = rosterSide === m.teamA ? 'A' : 'B';
+        const scorerId = pick(rosterSide);
+        const others = rosterSide.filter(x=>x!==scorerId);
+        const assistId = (others.length && rnd()<0.55) ? pick(others) : '';
+        m.events.push({ id:'demo_m'+i+'_e'+g, side, scorerId, assistId });
+      }
+    }
+    const scorers = m.events.filter(e=>e.scorerId).map(e=>e.scorerId);
+    m.mvpId = scorers.length ? pick(scorers) : pick(m.teamA);
+    const gks = all.filter(id=>{ const p = players.find(x=>x.id===id); return p && p.positions.includes('PO'); });
+    if(gks.length) m.gkId = pick(gks);
+    if(all.length){ m.hachazoId = pick(all); m.polemicaId = pick(all); }
+    all.forEach(id=>{ const q = ri(3); if(q>0) m.escabio[id] = q; });
+    const nc = ri(3);
+    for(let c=0;c<nc;c++){ const [author,text] = pick(commentsPool); m.comments.push({ id:'demo_m'+i+'_c'+c, author, text, ts: d.getTime() + (c+1)*3600000 }); }
+    matches.push(m);
+  }
+  return { players, matches };
+}
+
 /* ---------- Nube (Firebase / Firestore) ---------- */
 const FBCFG_KEY = 'pielmorenafc_fbconfig';
 const DEFAULT_FB_CONFIG = {
@@ -430,7 +545,7 @@ function loadFbConfig(){
   try{ const c = JSON.parse(localStorage.getItem(FBCFG_KEY)); if(c && c.projectId) return c; }catch(e){}
   return DEFAULT_FB_CONFIG;
 }
-function cloudConfigured(){ return !!fbConfig; }
+function cloudConfigured(){ return DEMO ? false : !!fbConfig; }
 function fsReady(){ return !!db; }
 
 function parseFbConfig(text){
@@ -441,6 +556,7 @@ function parseFbConfig(text){
   return obj;
 }
 function saveFbConfig(){
+  if(DEMO) return;
   const el = document.getElementById('fb-config');
   try{
     fbConfig = parseFbConfig(el ? el.value : '');
@@ -1403,28 +1519,34 @@ function jugadoresHTML(){
     </div>
 
     <div class="card">
-      <h3>Nube (Firebase · datos compartidos)</h3>
-      <div id="cloud-status">${cloudStatusHTML()}</div>
-      ${cloudConfigured()
-        ? `<div class="toolbar">
-             <button class="btn ghost sm" data-action="cloud-help">Ayuda</button>
-           </div>
-           <p class="muted" style="margin-top:10px">Todo lo que cargues se guarda en la nube y el equipo lo ve al instante. La nube es la fuente de verdad.</p>`
-        : `<p class="muted">Conectá la base de datos para que los datos los vea y cargue todo el equipo.</p>
-           <button class="btn ghost block" data-action="cloud-help" style="margin-bottom:12px">¿Cómo conecto?</button>
-           <label>Pegá acá tu <b>firebaseConfig</b>
-             <textarea id="fb-config" rows="6" placeholder='{ "apiKey": "...", "projectId": "...", ... }' autocomplete="off"></textarea>
-           </label>
-           <button class="btn primary block" data-action="cloud-save-config">Guardar y conectar</button>`}
+      <h3>${DEMO?'Modo demo':'Nube (Firebase · datos compartidos)'}</h3>
+      ${DEMO
+        ? `<p class="muted">Estás viendo una <b>demo</b> con jugadores y partidos de ejemplo. Podés probar todo: cargar jugadores, armar y <b>sortear equipos</b>, goles, ranking, escabio y comentarios.</p>
+           <p class="muted">Los cambios quedan <b>solo en este dispositivo</b> y no afectan los datos reales del equipo.</p>
+           <div class="toolbar" style="margin-top:6px">
+             <button class="btn primary sm" data-action="reset">Restaurar datos de ejemplo</button>
+           </div>`
+        : `<div id="cloud-status">${cloudStatusHTML()}</div>
+           ${cloudConfigured()
+             ? `<div class="toolbar">
+                  <button class="btn ghost sm" data-action="cloud-help">Ayuda</button>
+                </div>
+                <p class="muted" style="margin-top:10px">Todo lo que cargues se guarda en la nube y el equipo lo ve al instante. La nube es la fuente de verdad.</p>`
+             : `<p class="muted">Conectá la base de datos para que los datos los vea y cargue todo el equipo.</p>
+                <button class="btn ghost block" data-action="cloud-help" style="margin-bottom:12px">¿Cómo conecto?</button>
+                <label>Pegá acá tu <b>firebaseConfig</b>
+                  <textarea id="fb-config" rows="6" placeholder='{ "apiKey": "...", "projectId": "...", ... }' autocomplete="off"></textarea>
+                </label>
+                <button class="btn primary block" data-action="cloud-save-config">Guardar y conectar</button>`}`}
     </div>
 
     <div class="card">
       <h3>Datos del equipo</h3>
-      <p class="muted">Copia de seguridad manual por si querés pasarla a otro dispositivo.</p>
+      <p class="muted">${DEMO?'En la demo podés exportar o restaurar el ejemplo.':'Copia de seguridad manual por si querés pasarla a otro dispositivo.'}</p>
       <div class="toolbar">
         <button class="btn ghost sm" data-action="export">Exportar</button>
-        <button class="btn ghost sm" data-action="import">Importar</button>
-        <button class="btn danger sm" data-action="reset">Borrar todo</button>
+        ${DEMO?'':`<button class="btn ghost sm" data-action="import">Importar</button>`}
+        <button class="btn ${DEMO?'primary':'danger'} sm" data-action="reset">${DEMO?'Restaurar demo':'Borrar todo'}</button>
       </div>
       ${backupsHTML()}
     </div>
@@ -1672,6 +1794,11 @@ function importData(){
   inp.click();
 }
 async function resetData(){
+  if(DEMO){
+    if(!confirm('¿Restaurar los datos de ejemplo de la demo? Se descartan tus cambios locales.')) return;
+    data = demoSeed(); currentMatchId=null; escabioMatchId=null; save(); render();
+    return;
+  }
   if(!confirm('Esto borra TODOS los jugadores y partidos (de este dispositivo y de la nube). ¿Seguro?')) return;
   if(!confirm('Última confirmación: se pierde todo. ¿Continuar?')) return;
   data = { players:[], matches:[] }; currentMatchId=null; escabioMatchId=null; save();
@@ -1929,6 +2056,25 @@ document.addEventListener('change', e=>{
     render();
   }
 });
+
+if(DEMO){
+  if(!data.players.length && !data.matches.length){ data = demoSeed(); save(); }
+  document.body.classList.add('demo');
+  document.title = 'Fulbito FC · Demo';
+  const h1 = document.querySelector('.brand h1');
+  if(h1) h1.textContent = 'Fulbito FC';
+  const tc = document.querySelector('meta[name="theme-color"]');
+  if(tc) tc.setAttribute('content', '#0a1024');
+  document.querySelectorAll('.crest [fill="#7d2233"]').forEach(e=>e.setAttribute('fill','#00529f'));
+  document.querySelectorAll('.crest [fill="#f2b705"]').forEach(e=>e.setAttribute('fill','#febe10'));
+  const app = document.querySelector('.app');
+  const banner = document.createElement('div');
+  banner.className = 'demo-banner';
+  banner.textContent = 'Demo · datos de ejemplo · no se comparten';
+  if(app) app.prepend(banner);
+  const ver = document.getElementById('app-ver');
+  if(ver) ver.textContent = 'demo';
+}
 
 updateSfxBtn();
 updateHimnoBtn();
