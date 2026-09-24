@@ -228,6 +228,11 @@
   .guest-add{display:flex;gap:6px;margin-bottom:12px}
   .guest-add input{flex:1;margin-top:0}
   .esc-val{min-width:24px;text-align:center;font-weight:800;font-size:17px;color:var(--gold)}
+  .escabio-total{display:flex;align-items:baseline;gap:8px;margin:4px 0 4px}
+  .name-line{display:flex;align-items:center;gap:8px;margin-top:6px}
+  .name-line input{margin-top:0;flex:1}
+  .name-face{flex:0 0 auto;display:flex}
+  .comment-head .pixel-avatar{flex:0 0 auto}
   .comment{border-bottom:1px solid rgba(74,33,48,.55);padding:8px 0}
   .comment:last-child{border-bottom:0}
   .comment-head{display:flex;align-items:center;gap:8px}
@@ -393,7 +398,7 @@
       </svg>
       <div>
         <h1>Piel Morena FC</h1>
-        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v52</span></p>
+        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v60</span></p>
       </div>
     </div>
     <div class="header-btns">
@@ -969,6 +974,16 @@ function avatarSVG(seed, size, face, view){
 }
 function playerAvatar(p, size){ return avatarSVG(p.id, size, p.face); }
 function playerAvatarBust(p, size){ return avatarSVG(p.id, size, p.face, 'bust'); }
+function faceForName(name, size){
+  const n = String(name||'').trim().toLowerCase();
+  if(n){
+    const p = data.players.find(x=> (x.name||'').toLowerCase()===n || (x.nickname||'').toLowerCase()===n)
+           || data.players.find(x=> (x.nickname||'').toLowerCase() && n.indexOf((x.nickname||'').toLowerCase())===0)
+           || data.players.find(x=> (x.name||'').toLowerCase() && (x.name||'').toLowerCase().indexOf(n)===0);
+    if(p) return playerAvatarBust(p, size);
+  }
+  return avatarSVG('who:'+(name||'?'), size, null, 'bust');
+}
 
 /* ---------- render ---------- */
 function render(){
@@ -1013,22 +1028,9 @@ function escabioPostHTML(){
   const m = ms.find(x=>x.id===escabioMatchId);
   const opts = ms.map(x=>`<option value="${x.id}" ${x.id===m.id?'selected':''}>${fmtDate(x.date)} · ${esc(x.teamAName)} vs ${esc(x.teamBName)}</option>`).join('');
 
-  const played = [...(m.teamA||[]), ...(m.teamB||[])].filter(id=>getPlayer(id));
-  const escRows = played.map(id=>{
-    const q = escQty(m, id);
-    return `<div class="assign-row">
-      <span class="pname">${playerAvatar(getPlayer(id),26)}${esc(pname(id))}</span>
-      <div class="esc-ctrl">
-        <button class="icon-btn" data-action="esc-dec" data-id="${id}">−</button>
-        <span class="esc-val">${q}</span>
-        <button class="icon-btn" data-action="esc-inc" data-id="${id}">+</button>
-      </div>
-    </div>`;
-  }).join('') || '<p class="muted">Ese partido no tiene jugadores asignados.</p>';
-
   const cs = m.comments || [];
   const comments = cs.length ? cs.map(c=>`<div class="comment">
-      <div class="comment-head"><b>${esc(c.author||'Anónimo')}</b>
+      <div class="comment-head">${faceForName(c.author,26)}<b>${esc(c.author||'Anónimo')}</b>
         <span class="comment-time">${c.ts?new Date(c.ts).toLocaleString():''}</span>
         <button class="icon-btn" data-action="del-comment" data-id="${c.id}">×</button></div>
       <p class="comment-text">${esc(c.text)}</p>
@@ -1037,11 +1039,13 @@ function escabioPostHTML(){
   return `<div class="card">
     <h3>Post-partido</h3>
     <label>Partido<select id="esc-match">${opts}</select></label>
-    <h3 style="margin-top:4px">Escabio <span class="hint">· ${escTotal(m)}</span></h3>
-    ${escRows}
+    <div class="escabio-total"><span class="esc-val" style="font-size:30px;min-width:0">${escTotal(m)}</span> <span class="muted">🍾 escabio del equipo</span></div>
     <h3 style="margin-top:16px">Comentarios <span class="hint">· ${cs.length}</span></h3>
     <div class="comment-list">${comments}</div>
-    <label>Tu nombre<input id="c-name" type="text" value="${esc(commentName)}" placeholder="Ej: Tuti" autocomplete="off"></label>
+    <label>Tu nombre
+      <span class="name-line"><span class="name-face" id="name-face">${faceForName(commentName,30)}</span>
+      <input id="c-name" type="text" value="${esc(commentName)}" placeholder="Ej: Tuti" autocomplete="off"></span>
+    </label>
     <label>Comentario<textarea id="c-text" rows="2" placeholder="¿Cómo estuvo el partido?" autocomplete="off"></textarea></label>
     <button class="btn primary block" data-action="add-comment">Comentar</button>
   </div>`;
@@ -1324,11 +1328,35 @@ function statsHTML(){
     <td class="c">${r.s.mvp||''}</td>
     <td class="c">${r.s.gk||''}</td>
   </tr>`).join('');
-  return head + rankingHTML() + summary + `<div class="card"><div class="table-wrap"><table class="table">
+  return head + rankingHTML() + summary + escabioTableHTML() + `<div class="card"><div class="table-wrap"><table class="table">
     <thead><tr><th class="c">#</th><th>Jugador</th><th class="c">PJ</th><th class="c">G</th><th class="c">A</th><th class="c">V</th><th class="c">E</th><th class="c">D</th><th class="c">Rach</th><th class="c">Hach</th><th class="c">Polém</th><th class="c">Esc</th><th class="c">MVP</th><th class="c">Arq</th></tr></thead>
     <tbody>${body}</tbody>
   </table></div></div>
   <p class="muted" style="text-align:center">PJ: jugados · G: goles · A: asistencias · V: ganados · E: empatados · D: perdidos · Rach: mejor racha invicta · Hach: hachazos · Polém: polémicas · Esc: escabios · MVP: figura · Arq: mejor arquero</p>`;
+}
+
+function escabioTableHTML(){
+  const cols = [...data.matches].filter(m=> escTotal(m) > 0)
+    .sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  if(!cols.length) return '';
+  const rows = data.players.map(p=>({p, total: cols.reduce((s,m)=>s+escQty(m,p.id),0)}))
+    .filter(r=> r.total > 0)
+    .sort((x,y)=> y.total - x.total || x.p.name.localeCompare(y.p.name));
+  if(!rows.length) return '';
+  const short = d => d ? `${d.slice(8,10)}/${d.slice(5,7)}` : 's/f';
+  const head = `<tr><th class="c">#</th><th>Jugador</th>${cols.map(m=>`<th class="c">${short(m.date)}</th>`).join('')}<th class="c">Total</th></tr>`;
+  const body = rows.map((r,i)=>`<tr>
+    <td class="c"><span class="rk">${i+1}</span></td>
+    <td class="clickable" data-action="open-player" data-id="${r.p.id}"><span class="pname">${playerAvatarBust(r.p,24)}${esc(pname(r.p.id))}</span></td>
+    ${cols.map(m=>{ const q=escQty(m,r.p.id); return `<td class="c">${q||''}</td>`; }).join('')}
+    <td class="c gold"><b>${r.total}</b></td>
+  </tr>`).join('');
+  const foot = `<tr><td class="c"></td><td><b>Total del día</b></td>${cols.map(m=>`<td class="c gold"><b>${escTotal(m)}</b></td>`).join('')}<td class="c gold"><b>${rows.reduce((s,r)=>s+r.total,0)}</b></td></tr>`;
+  return `<div class="card"><h3>🍾 Escabio · tabla general</h3>
+    <div class="table-wrap" style="margin-top:8px"><table class="table">
+      <thead>${head}</thead><tbody>${body}${foot}</tbody></table></div>
+    <p class="muted">Cantidad de escabio por jugador en cada fecha. Última columna: total de cada uno. Última fila: total del equipo ese día.</p>
+  </div>`;
 }
 
 /* ---------- Ficha de jugador ---------- */
@@ -2065,6 +2093,12 @@ document.addEventListener('change', e=>{
   if(e.target.id==='voter-sel'){
     localStorage.setItem('pmfc_voter_id', e.target.value);
     render();
+  }
+});
+document.addEventListener('input', e=>{
+  if(e.target.id==='c-name'){
+    const el = document.getElementById('name-face');
+    if(el) el.innerHTML = faceForName(e.target.value, 30);
   }
 });
 
