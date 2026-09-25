@@ -156,7 +156,7 @@
   .face-controls{display:flex;flex-direction:column;gap:8px}
   .face-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
   .face-lbl{font-size:12px;color:var(--muted);width:62px;flex:0 0 auto;font-weight:700}
-  .swatch{width:24px;height:24px;border-radius:6px;border:2px solid rgba(0,0,0,.45);cursor:pointer;padding:0}
+  .swatch{width:26px;height:26px;border-radius:6px;border:2px solid rgba(0,0,0,.45);cursor:pointer;padding:0}
   .swatch.on{outline:2px solid var(--gold);outline-offset:1px;border-color:var(--gold)}
   .face-pill{background:transparent;border:2px solid var(--line);color:var(--muted);border-radius:8px;
     padding:5px 10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
@@ -167,14 +167,14 @@
   .face-group>summary::-webkit-details-marker{display:none}
   .face-group>summary::before{content:'▸';color:var(--muted);font-size:11px}
   .face-group[open]>summary::before{content:'▾'}
-  .face-group .face-row{margin-top:8px}
-  .face-row.scroll{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:3px}
-  .face-row.pos-row{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:3px;align-items:center}
-  .face-row.pos-row .face-lbl{width:auto;font-size:11px;padding-right:6px;white-space:nowrap}
-  .face-row.pos-row .face-pill{padding:4px 7px;font-size:12px;border-radius:7px}
-  .face-row.opt-row{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:3px}
-  .face-row.opt-row .face-lbl{width:auto;font-size:11px;padding-right:6px;white-space:nowrap}
-  .face-row.opt-row .face-pill{padding:4px 7px;font-size:12px;border-radius:7px}
+  .face-group .face-row{margin-top:10px}
+  .face-row.scroll{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px;gap:8px}
+  .face-row.pos-row{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px;align-items:center;gap:8px}
+  .face-row.pos-row .face-lbl{width:auto;font-size:12px;padding-right:8px;white-space:nowrap}
+  .face-row.pos-row .face-pill{padding:6px 11px;font-size:13px;border-radius:9px}
+  .face-row.opt-row{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px;gap:8px}
+  .face-row.opt-row .face-lbl{width:auto;font-size:12px;padding-right:8px;white-space:nowrap}
+  .face-row.opt-row .face-pill{padding:6px 11px;font-size:13px;border-radius:9px}
 
   /* Nube */
   .cloud-line{display:flex;align-items:center;gap:8px;margin-bottom:4px}
@@ -431,7 +431,7 @@
       </svg>
       <div>
         <h1>Piel Morena FC</h1>
-        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v65</span></p>
+        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v66</span></p>
       </div>
     </div>
     <div class="header-btns">
