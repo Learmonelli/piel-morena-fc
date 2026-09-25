@@ -193,6 +193,13 @@
   .sidebtn{background:transparent;border:1px solid var(--line);color:var(--muted);
     border-radius:9px;padding:7px 13px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit}
   .sidebtn.on{background:var(--gold);border-color:var(--gold);color:#2a1706}
+  .row-actions{display:flex;align-items:center;gap:6px;flex:0 0 auto}
+  .award-btns{display:flex;gap:2px}
+  .award-btn{background:transparent;border:1px solid var(--line);border-radius:8px;padding:2px 4px;
+    font-size:15px;line-height:1;cursor:pointer;filter:grayscale(1) opacity(.45)}
+  .award-btn.on{filter:none;background:rgba(242,183,5,.2);border-color:var(--gold)}
+  .assign-row .pname{flex:1 1 auto;min-width:0}
+  .assign-row .pname .nm-txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
   /* Goals */
   .goal-row{display:flex;align-items:center;gap:10px;padding:9px 0;
@@ -424,7 +431,7 @@
       </svg>
       <div>
         <h1>Piel Morena FC</h1>
-        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v63</span></p>
+        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v64</span></p>
       </div>
     </div>
     <div class="header-btns">
@@ -1151,11 +1158,19 @@ function matchDetailHTML(){
     const inA=m.teamA.includes(p.id), inB=m.teamB.includes(p.id);
     const bBtn = isRival ? '' :
       `<button class="sidebtn ${inB?'on':''}" data-action="toggle-team" data-id="${p.id}" data-side="B"${dis}>B</button>`;
+    const awardBtns = (inA||inB) ? `<div class="award-btns">
+        <button class="award-btn ${m.mvpId===p.id?'on':''}" data-action="aw" data-id="${p.id}" data-cat="mvp"${dis} title="Figura">👑</button>
+        <button class="award-btn ${m.gkId===p.id?'on':''}" data-action="aw" data-id="${p.id}" data-cat="gk"${dis} title="Mejor arquero">🧤</button>
+        <button class="award-btn ${m.hachazoId===p.id?'on':''}" data-action="aw" data-id="${p.id}" data-cat="hachazo"${dis} title="Hachazo">🪓</button>
+        <button class="award-btn ${m.polemicaId===p.id?'on':''}" data-action="aw" data-id="${p.id}" data-cat="polemica"${dis} title="Polémica">📣</button>
+      </div>` : '';
     return `<div class="assign-row">
-      <span class="pname">${playerAvatar(p,30)}${p.number?`<span class="num">${esc(p.number)}</span>`:''}${esc(pname(p.id))}${invBadge(p)}</span>
-      <div class="side-btns">
-        <button class="sidebtn ${inA?'on':''}" data-action="toggle-team" data-id="${p.id}" data-side="A"${dis}>${isRival?'Juega':'A'}</button>
-        ${bBtn}
+      <span class="pname">${playerAvatar(p,30)}${p.number?`<span class="num">${esc(p.number)}</span>`:''}<span class="nm-txt">${esc(pname(p.id))}</span>${invBadge(p)}</span>
+      <div class="row-actions">${awardBtns}
+        <div class="side-btns">
+          <button class="sidebtn ${inA?'on':''}" data-action="toggle-team" data-id="${p.id}" data-side="A"${dis}>${isRival?'Juega':'A'}</button>
+          ${bBtn}
+        </div>
       </div>
     </div>`;
   }).join('') : '<p class="muted">Primero cargá jugadores en la pestaña Jugadores.</p>';
@@ -1176,25 +1191,6 @@ function matchDetailHTML(){
       ${canEdit ? `<button class="icon-btn" data-action="del-goal" data-id="${ev.id}">×</button>` : ''}
     </div>`;
   }).join('') : '<p class="muted">Sin goles registrados.</p>';
-
-  const played = isRival ? m.teamA : [...m.teamA, ...m.teamB];
-  const mvpOpts = played.map(id=>`<option value="${id}" ${m.mvpId===id?'selected':''}>${esc(pname(id))}</option>`).join('');
-  const mvpSelect = played.length
-    ? `<select id="mvp-select"${dis}><option value="">Sin definir</option>${mvpOpts}</select>`
-    : `<p class="muted">Asigná jugadores primero.</p>`;
-
-  const hachazoOpts = played.map(id=>`<option value="${id}" ${m.hachazoId===id?'selected':''}>${esc(pname(id))}</option>`).join('');
-  const hachazoSelect = played.length
-    ? `<select id="hachazo-select"${dis}><option value="">Sin definir</option>${hachazoOpts}</select>`
-    : `<p class="muted">Asigná jugadores primero.</p>`;
-  const polOpts = played.map(id=>`<option value="${id}" ${m.polemicaId===id?'selected':''}>${esc(pname(id))}</option>`).join('');
-  const polSelect = played.length
-    ? `<select id="polemica-select"${dis}><option value="">Sin definir</option>${polOpts}</select>`
-    : `<p class="muted">Asigná jugadores primero.</p>`;
-  const gkOpts = played.map(id=>`<option value="${id}" ${m.gkId===id?'selected':''}>${esc(pname(id))}</option>`).join('');
-  const gkSelect = played.length
-    ? `<select id="gk-select"${dis}><option value="">Sin definir</option>${gkOpts}</select>`
-    : `<p class="muted">Asigná jugadores primero.</p>`;
 
   return `
     <button class="btn ghost sm" data-action="back" style="margin-bottom:14px">← Volver</button>
@@ -1217,26 +1213,6 @@ function matchDetailHTML(){
     </div>
 
     <div class="card">
-      <h3>👑 Figura del partido <span class="hint">(manual)</span></h3>
-      ${mvpSelect}
-    </div>
-
-    <div class="card">
-      <h3>🧤 Mejor arquero <span class="hint">(manual / si hubo)</span></h3>
-      ${gkSelect}
-    </div>
-
-    <div class="card">
-      <h3>🪓 Hachazo <span class="hint">(manual)</span></h3>
-      ${hachazoSelect}
-    </div>
-
-    <div class="card">
-      <h3>📣 Polémica <span class="hint">(manual)</span></h3>
-      ${polSelect}
-    </div>
-
-    <div class="card">
       <h3>${isRival?'Quiénes juegan':'Armar los equipos'}
         <span class="hint">· A: ${m.teamA.length}${isRival?'':' · B: '+m.teamB.length}</span></h3>
       ${canEdit && !isRival ? `<div class="toolbar" style="margin-bottom:12px">
@@ -1245,6 +1221,7 @@ function matchDetailHTML(){
       </div>
       <p class="muted" style="margin:0 0 10px">Marcá quiénes juegan con A o B y tocá <b>Sortear</b> para repartirlos al azar en partes iguales.</p>` : ''}
       ${canEdit ? guestAdd : ''}
+      ${canEdit ? `<p class="muted" style="margin:0 0 10px">Premios: tocá 👑 figura · 🧤 arquero · 🪓 hachazo · 📣 polémica al lado de cada jugador (podés darle varios a la vez).</p>` : ''}
       ${assign}
     </div>
 
@@ -1257,6 +1234,14 @@ function matchDetailHTML(){
 /* ---------- Premios del partido (manuales: figura, arquero, hachazo, polémica) ---------- */
 function awardId(m, cat){
   return { mvp:m.mvpId, gk:m.gkId, hachazo:m.hachazoId, polemica:m.polemicaId }[cat] || null;
+}
+function toggleAward(pid, cat){
+  const m = data.matches.find(x=>x.id===currentMatchId); if(!canEditMatch(m)) return;
+  const field = { mvp:'mvpId', gk:'gkId', hachazo:'hachazoId', polemica:'polemicaId' }[cat];
+  if(!field) return;
+  if(m[field] === pid) m[field] = null;
+  else { m[field] = pid; if(cat==='mvp') sfx('mvp'); }
+  save(); persistMatch(m); render();
 }
 
 /* ---------- Estadísticas ---------- */
@@ -2140,6 +2125,7 @@ document.addEventListener('click', e=>{
     case 'cancel-edit': playerEditMode = false; newFace = null; newPositions = null; render(); break;
     case 'save-player': savePlayer(); break;
     case 'toggle-team': toggleTeam(id, t.dataset.side); break;
+    case 'aw': toggleAward(id, t.dataset.cat); break;
     case 'shuffle-teams': shuffleTeams(); break;
     case 'clear-teams': clearTeams(); break;
     case 'esc-inc': escAdjust(id, 1); break;
@@ -2175,22 +2161,6 @@ document.addEventListener('change', e=>{
     if(w) w.style.display = e.target.value==='rival' ? 'block' : 'none';
   }
   if(e.target.id==='esc-match'){ escabioMatchId = e.target.value; render(); }
-  if(e.target.id==='mvp-select'){
-    const m = data.matches.find(x=>x.id===currentMatchId);
-    if(m && canEditMatch(m)){ m.mvpId = e.target.value || null; sfx('mvp'); save(); persistMatch(m); }
-  }
-  if(e.target.id==='gk-select'){
-    const m = data.matches.find(x=>x.id===currentMatchId);
-    if(m && canEditMatch(m)){ m.gkId = e.target.value || null; sfx('mvp'); save(); persistMatch(m); render(); }
-  }
-  if(e.target.id==='hachazo-select'){
-    const m = data.matches.find(x=>x.id===currentMatchId) || data.matches.find(x=>x.id===escabioMatchId);
-    if(m && canEditMatch(m)){ m.hachazoId = e.target.value || null; save(); persistMatch(m); render(); }
-  }
-  if(e.target.id==='polemica-select'){
-    const m = data.matches.find(x=>x.id===currentMatchId) || data.matches.find(x=>x.id===escabioMatchId);
-    if(m && canEditMatch(m)){ m.polemicaId = e.target.value || null; save(); persistMatch(m); render(); }
-  }
 });
 document.addEventListener('input', e=>{
   if(e.target.id==='c-name'){
