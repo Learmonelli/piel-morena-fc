@@ -431,7 +431,7 @@
       </svg>
       <div>
         <h1>Piel Morena FC</h1>
-        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v64</span></p>
+        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v65</span></p>
       </div>
     </div>
     <div class="header-btns">
@@ -894,7 +894,7 @@ const AV_EYES    = [['Normal',0],['Guiño',1],['Sonrisa',2],['Enojado',3],['Sorp
 const AV_EYESIZE = [['Chicos',0],['Medianos',1],['Grandes',2],['Redondos',3],['Achinados',4],['Altos',5]];
 const AV_FACIAL  = [['Nada',0],['Barba',1],['Bigote',2],['Candado',3],['Completa',4]];
 const AV_HAT     = [['Nada',0],['Gorra',1],['Vincha',2],['Gorro',3]];
-const AV_GLASSES = [['Nada',0],['Redondos',1],['Cuadrados',2],['De sol',3]];
+const AV_GLASSES = [['Nada',0],['Redondos',1],['Cuadrados',2],['De sol',3],['Parche',4]];
 const AV_JERSEY  = [['Lisa',0],['Rayas',1],['Banda',2],['Franja',3],['Mitades',4],['Mangas',5]];
 function randomFace(){
   return {
@@ -998,15 +998,41 @@ function avatarSVG(seed, size, face, view){
   if(facial===3){ put(11+fx,15,'h'); put(12+fx,15,'h'); }
 
   // ---------- gorra / vincha / gorro ----------
-  const paintW=(x,y,rx,ry)=>{ if(x>=0&&x<W&&y>=0&&y<H&&inEll(x,y,rx,ry)) put(x,y,'W'); };
-  if(hat===1){ for(let y=0;y<=4;y++) for(let x=0;x<W;x++) paintW(x,y,HRX+0.3,HRY+0.3); for(let x=5;x<=19;x++) paintW(x,5); put(11,0,'w'); put(12,0,'w'); }
-  else if(hat===2){ for(let x=4;x<=19;x++) if(g[5][x]!=='.') put(x,5,'W'); }
-  else if(hat===3){ for(let y=0;y<=6;y++) for(let x=0;x<W;x++) paintW(x,y,HRX+0.2,HRY+0.2); for(let y=7;y<=8;y++){ if(g[y][4]!=='.') put(4,y,'W'); if(g[y][19]!=='.') put(19,y,'W'); } }
+  const capFill=(y0,y1,c)=>{ for(let y=y0;y<=y1;y++) for(let x=0;x<W;x++) if(inEll(x,y,HCX,HCY,HRX+0.3,HRY+0.3)) put(x,y,c); };
+  if(hat===1){ // gorra: copa + visera
+    capFill(0,4,'W');
+    for(let x=4;x<=19;x++) put(x,5,'w');
+    put(3,5,'w'); put(20,5,'w');
+    put(11,0,'w'); put(12,0,'w');
+  } else if(hat===2){ // vincha: banda en la frente
+    for(let x=0;x<W;x++){ if(g[6][x]!=='.') put(x,6,'W'); if(g[7][x]!=='.') put(x,7,'w'); }
+  } else if(hat===3){ // gorro: copa + reborde doblado
+    capFill(0,6,'W');
+    for(let x=0;x<W;x++){ if(g[7][x]!=='.') put(x,7,'w'); if(g[8][x]!=='.') put(x,8,'w'); }
+    put(11,0,'w'); put(12,0,'w');
+  }
 
   // ---------- anteojos ----------
-  if(glasses===1){ for(const x of [8,9,10,13,14,15]){ put(x+fx,9,'g'); put(x+fx,11,'g'); } put(9+fx,10,'g'); put(14+fx,10,'g'); }
-  else if(glasses===2){ for(const x of [7,8,9,10,13,14,15,16]){ put(x+fx,9,'g'); put(x+fx,11,'g'); } put(8+fx,10,'g'); put(10+fx,10,'g'); put(13+fx,10,'g'); put(15+fx,10,'g'); }
-  else if(glasses===3){ for(const x of [9,10,13,14]) put(x+fx,10,'Z'); for(const x of [8,9,10,13,14,15]) put(x+fx,9,'g'); }
+  const lens=(x0,x1,y0,y1)=>{ for(let y=y0;y<=y1;y++){ put(x0+fx,y,'g'); put(x1+fx,y,'g'); } for(let x=x0;x<=x1;x++){ put(x+fx,y0,'g'); put(x+fx,y1,'g'); } };
+  if(glasses===1){ // redondos
+    lens(8,11,9,12); lens(13,16,9,12);
+    put(12+fx,10,'g');
+    for(const x of [6,7,17,18]) put(x+fx,10,'g');
+  } else if(glasses===2){ // cuadrados (mas anchos)
+    lens(7,11,9,12); lens(13,17,9,12);
+    put(12+fx,10,'g');
+    for(const x of [5,6,18,19]) put(x+fx,10,'g');
+  } else if(glasses===3){ // de sol (cristales oscuros)
+    lens(8,11,9,12); lens(13,16,9,12);
+    put(12+fx,10,'g');
+    for(const x of [6,7,17,18]) put(x+fx,10,'g');
+    for(let x=9;x<=10;x++) for(let y=10;y<=11;y++) put(x+fx,y,'Z');
+    for(let x=14;x<=15;x++) for(let y=10;y<=11;y++) put(x+fx,y,'Z');
+  } else if(glasses===4){ // parche en el ojo (con correa diagonal)
+    for(let x=8;x<=10;x++) for(let y=9;y<=11;y++) put(x+fx,y,'g');
+    for(let i=0;i<10;i++) put((10+i)+fx, 11 - Math.floor(i*0.6), 'g');
+    put(7+fx,11,'g'); put(6+fx,12,'g');
+  }
 
   // ---------- cuello ----------
   rect(10,16,13,17,'d');
