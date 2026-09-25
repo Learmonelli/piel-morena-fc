@@ -161,6 +161,20 @@
   .face-pill{background:transparent;border:2px solid var(--line);color:var(--muted);border-radius:8px;
     padding:5px 10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
   .face-pill.on{background:var(--gold);border-color:var(--gold);color:#2a1706}
+  .face-group{border:2px solid var(--line);border-radius:10px;padding:6px 10px}
+  .face-group>summary{cursor:pointer;font-weight:800;font-size:13px;color:var(--gold);list-style:none;
+    display:flex;align-items:center;gap:6px;padding:2px 0}
+  .face-group>summary::-webkit-details-marker{display:none}
+  .face-group>summary::before{content:'▸';color:var(--muted);font-size:11px}
+  .face-group[open]>summary::before{content:'▾'}
+  .face-group .face-row{margin-top:8px}
+  .face-row.scroll{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:3px}
+  .face-row.pos-row{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:3px;align-items:center}
+  .face-row.pos-row .face-lbl{width:auto;font-size:11px;padding-right:6px;white-space:nowrap}
+  .face-row.pos-row .face-pill{padding:4px 7px;font-size:12px;border-radius:7px}
+  .face-row.opt-row{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:3px}
+  .face-row.opt-row .face-lbl{width:auto;font-size:11px;padding-right:6px;white-space:nowrap}
+  .face-row.opt-row .face-pill{padding:4px 7px;font-size:12px;border-radius:7px}
 
   /* Nube */
   .cloud-line{display:flex;align-items:center;gap:8px;margin-bottom:4px}
@@ -192,13 +206,14 @@
   /* Table */
   .table{width:100%;border-collapse:collapse;font-size:13px}
   .table th{text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase;
-    letter-spacing:.5px;padding:8px 6px;border-bottom:1px solid var(--line)}
-  .table td{padding:10px 6px;border-bottom:1px solid rgba(74,33,48,.45)}
-  .table th.c,.table td.c{text-align:center;width:44px}
+    letter-spacing:.5px;padding:8px 5px;border-bottom:1px solid var(--line)}
+  .table td{padding:9px 5px;border-bottom:1px solid rgba(74,33,48,.45)}
+  .table th.c,.table td.c{text-align:center;width:30px;padding-left:2px;padding-right:2px}
+  .table th.c{font-size:9px;letter-spacing:.2px}
   .table tr:first-child td .rk{color:var(--gold)}
   .rk{font-weight:800;color:var(--muted);font-size:12px}
   .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
-  .table-wrap .table{min-width:780px}
+  .table-wrap .table{min-width:560px}
 
   /* Ranking */
   .cat-pills{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
@@ -409,7 +424,7 @@
       </svg>
       <div>
         <h1>Piel Morena FC</h1>
-        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v62</span></p>
+        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v63</span></p>
       </div>
     </div>
     <div class="header-btns">
@@ -1524,7 +1539,7 @@ function playerPositions(p){
 function posPickerHTML(){
   const cur = newPositions || [];
   return `<div class="face-controls" style="margin-bottom:14px">${
-    POS_GROUPS.map(([g,arr])=>`<div class="face-row"><span class="face-lbl">${g}</span>${
+    POS_GROUPS.map(([g,arr])=>`<div class="face-row pos-row"><span class="face-lbl">${g}</span>${
       arr.map(([v,l])=>`<button type="button" class="face-pill ${cur.includes(v)?'on':''}" data-action="pos-toggle" data-val="${v}" title="${l}">${v}</button>`).join('')
     }</div>`).join('')
   }</div>`;
@@ -1537,7 +1552,7 @@ function swatch(key, i, color){
   return `<button type="button" class="swatch ${newFace[key]===i?'on':''}" style="background:${color}" data-action="face-set" data-key="${key}" data-val="${i}" aria-label="${key} ${i}"></button>`;
 }
 function faceOptRow(label, arr, key, cur){
-  return `<div class="face-row"><span class="face-lbl">${label}</span>${
+  return `<div class="face-row opt-row"><span class="face-lbl">${label}</span>${
     arr.map(([l,v])=>`<button type="button" class="face-pill ${(cur!=null?cur:0)===v?'on':''}" data-action="face-set" data-key="${key}" data-val="${v}">${l}</button>`).join('')
   }</div>`;
 }
@@ -1545,18 +1560,30 @@ function faceEditorHTML(){
   return `<div class="face-editor">
     <div class="face-preview" id="face-preview">${avatarSVG('new-face',64,newFace)}</div>
     <div class="face-controls">
-      ${faceOptRow('Corte', AV_STYLE, 'style', newFace.style)}
-      ${faceOptRow('Ojos', AV_EYESIZE, 'eyeSize', newFace.eyeSize)}
-      ${faceOptRow('Cara', AV_EYES, 'eyes', newFace.eyes)}
-      ${faceOptRow('Barba', AV_FACIAL, 'facial', newFace.facial)}
-      ${faceOptRow('Anteojos', AV_GLASSES, 'glasses', newFace.glasses)}
-      ${faceOptRow('Cabeza', AV_HAT, 'hat', newFace.hat)}
-      <div class="face-row"><span class="face-lbl">Piel</span>${AV_SKIN.map((c,i)=>swatch('skin',i,c)).join('')}</div>
-      <div class="face-row"><span class="face-lbl">Pelo</span>${AV_HAIR.map((c,i)=>swatch('hair',i,c)).join('')}</div>
-      <div class="face-row"><span class="face-lbl">Gorra</span>${AV_SHIRT.map((c,i)=>swatch('hatColor',i,c)).join('')}</div>
-      <div class="face-row"><span class="face-lbl">Camiseta</span>${AV_SHIRT.map((c,i)=>swatch('shirt',i,c)).join('')}</div>
-      <div class="face-row"><span class="face-lbl">Camiseta 2</span>${AV_SHIRT.map((c,i)=>swatch('shirt2',i,c)).join('')}</div>
-      ${faceOptRow('Diseño', AV_JERSEY, 'jersey', newFace.jersey)}
+      <details class="face-group" open>
+        <summary>Rostro</summary>
+        ${faceOptRow('Corte', AV_STYLE, 'style', newFace.style)}
+        ${faceOptRow('Ojos', AV_EYESIZE, 'eyeSize', newFace.eyeSize)}
+        ${faceOptRow('Cara', AV_EYES, 'eyes', newFace.eyes)}
+        ${faceOptRow('Barba', AV_FACIAL, 'facial', newFace.facial)}
+        ${faceOptRow('Anteojos', AV_GLASSES, 'glasses', newFace.glasses)}
+      </details>
+      <details class="face-group">
+        <summary>Pelo y piel</summary>
+        <div class="face-row scroll"><span class="face-lbl">Piel</span>${AV_SKIN.map((c,i)=>swatch('skin',i,c)).join('')}</div>
+        <div class="face-row scroll"><span class="face-lbl">Pelo</span>${AV_HAIR.map((c,i)=>swatch('hair',i,c)).join('')}</div>
+      </details>
+      <details class="face-group">
+        <summary>Cabeza</summary>
+        ${faceOptRow('Cabeza', AV_HAT, 'hat', newFace.hat)}
+        <div class="face-row scroll"><span class="face-lbl">Gorra</span>${AV_SHIRT.map((c,i)=>swatch('hatColor',i,c)).join('')}</div>
+      </details>
+      <details class="face-group">
+        <summary>Camiseta</summary>
+        <div class="face-row scroll"><span class="face-lbl">Color</span>${AV_SHIRT.map((c,i)=>swatch('shirt',i,c)).join('')}</div>
+        <div class="face-row scroll"><span class="face-lbl">Color 2</span>${AV_SHIRT.map((c,i)=>swatch('shirt2',i,c)).join('')}</div>
+        ${faceOptRow('Diseño', AV_JERSEY, 'jersey', newFace.jersey)}
+      </details>
     </div>
     <button class="btn ghost sm" data-action="face-random">Aleatorio</button>
   </div>`;
