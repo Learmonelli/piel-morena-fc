@@ -213,9 +213,20 @@
   .podium-item.p3{border-color:#c98a4b}
   .podium-item .medal{position:absolute;top:6px;left:7px;font-weight:800;font-size:12px;color:var(--muted)}
   .podium-item .pixel-avatar{margin:6px auto 0;width:48px;height:48px}
+  .podium-item .pod-icon{position:absolute;line-height:1;font-size:20px;z-index:2;pointer-events:none;
+    filter:drop-shadow(0 2px 2px rgba(0,0,0,.55))}
+  .podium-item .pod-mvp{top:1px;left:50%;transform:translateX(-50%)}
+  .podium-item .pod-d{top:1px;left:50%;transform:translateX(-50%);font-size:22px}
+  .podium-item .pod-hachazos{top:42px;left:calc(50% - 32px);transform:rotate(18deg);font-size:24px}
+  .podium-item .pod-polemicas{top:42px;left:calc(50% + 7px);transform:rotate(42deg);font-size:20px;
+    filter:hue-rotate(-55deg) saturate(1.8) drop-shadow(0 2px 2px rgba(0,0,0,.55))}
   .podium-name{display:block;font-size:12px;font-weight:700;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .podium-val{display:block;font-size:22px;font-weight:800;color:var(--gold);line-height:1.1}
   .podium-cat{display:block;font-size:9px;text-transform:uppercase;color:var(--muted);letter-spacing:.4px}
+  .podium-wrap{display:flex;gap:10px;flex-wrap:wrap;align-items:stretch;margin-bottom:12px}
+  .podium-wrap .podium{flex:1 1 210px;margin-bottom:0}
+  .cat-help{flex:1 1 150px;background:rgba(242,183,5,.08);border:2px solid var(--line);border-radius:12px;
+    padding:10px 12px;font-size:12px;line-height:1.45;color:var(--muted);display:flex;align-items:center}
   .rank-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(74,33,48,.55)}
   .rank-row:last-child{border-bottom:0}
   .rank-pos{width:24px;text-align:center;font-weight:800;color:var(--muted);font-size:13px;flex:0 0 auto}
@@ -398,7 +409,7 @@
       </svg>
       <div>
         <h1>Piel Morena FC</h1>
-        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v60</span></p>
+        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v61</span></p>
       </div>
     </div>
     <div class="header-btns">
@@ -421,10 +432,18 @@ let currentPlayerId = null;
 let playerBackView = 'jugadores';
 let newFace = null;
 let newPositions = null;
-let rankCat = 'racha';
+let rankCat = 'goles';
 let escabioMatchId = null;
 let commentName = localStorage.getItem('pmfc_name') || '';
 let playerEditMode = false;
+
+/* ---------- Admin (solo este mail puede borrar partidos) ---------- */
+const ADMIN_EMAIL = 'leandroarmonelli@gmail.com';
+let auth = null;
+let currentUser = null;
+let isAdmin = false;
+function isAdminEmail(u){ return !!(u && u.email && u.email.toLowerCase() === ADMIN_EMAIL); }
+function canEditMatch(m){ return !!m && (!m.closed || isAdmin || DEMO); }
 
 function load(){
   try{
@@ -489,7 +508,7 @@ function demoSeed(){
     const date = d.toISOString().slice(0,10);
     const isRival = (i % 3 === 2);
     const m = { id:'demo_m'+i, date, mode: isRival?'rival':'interno', teamA:[], teamB:[], events:[],
-                mvpId:null, gkId:null, hachazoId:null, polemicaId:null, escabio:{}, comments:[], votes:{} };
+                mvpId:null, gkId:null, hachazoId:null, polemicaId:null, escabio:{}, comments:[] };
     const pool = shuffled(players.filter(p=>!p.guest).map(p=>p.id)).slice(0, isRival?10:12);
     if(isRival){
       m.teamAName = 'Fulbito FC';
@@ -583,6 +602,7 @@ async function ensureFirebase(){
     window.__fbLoading = (async()=>{
       await loadScript('https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js');
       await loadScript('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js');
+      await loadScript('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js');
     })();
   }
   try{ await window.__fbLoading; return typeof firebase !== 'undefined'; }
@@ -603,6 +623,15 @@ async function initCloud(){
     firebase.initializeApp(fbConfig);
     db = firebase.firestore();
     cloudStarted = true;
+
+    if(firebase.auth){
+      auth = firebase.auth();
+      auth.onAuthStateChanged(u=>{
+        currentUser = u || null;
+        isAdmin = isAdminEmail(currentUser);
+        render();
+      });
+    }
 
     db.collection('players').onSnapshot(snap=>{
       data.players = snap.docs.map(d=>d.data());
@@ -627,6 +656,7 @@ async function initCloud(){
 }
 function afterSnapshot(){
   localStorage.setItem(KEY, JSON.stringify(data));
+  autoCloseOldMatches();
   if(cloudState.status !== 'error') cloudState = { status:'ok', message:'Sincronizado en tiempo real.' };
   maybeAutoBackup();
   render();
@@ -635,8 +665,34 @@ function afterSnapshot(){
 function persistPlayer(p){ if(fsReady()) db.collection('players').doc(p.id).set(p).catch(e=>cloudFail(e)); }
 function removePlayerDoc(id){ if(fsReady()) db.collection('players').doc(id).delete().catch(e=>cloudFail(e)); }
 function persistMatch(m){ if(fsReady()) db.collection('matches').doc(m.id).set(m).catch(e=>cloudFail(e)); }
+function persistComments(m){ if(fsReady()) db.collection('matches').doc(m.id).update({ comments: m.comments || [] }).catch(e=>cloudFail(e)); }
 function removeMatchDoc(id){ if(fsReady()) db.collection('matches').doc(id).delete().catch(e=>cloudFail(e)); }
 function cloudFail(e){ cloudState = { status:'error', message:'Error: ' + (e && e.message ? e.message : e) }; renderCloudStatus(); }
+
+/* ---------- Sesión de administrador (Google) ---------- */
+function adminLogin(){
+  if(!cloudConfigured()){ alert('Primero conectá la nube.'); return; }
+  ensureFirebase().then(()=>{
+    if(typeof firebase === 'undefined'){ alert('No se pudo cargar Firebase.'); return; }
+    if(!firebase.apps || !firebase.apps.length) firebase.initializeApp(fbConfig);
+    if(!auth) auth = firebase.auth();
+    auth.signInWithPopup(new firebase.auth.GoogleAuthProvider())
+      .catch(e=>alert('No se pudo iniciar sesión: ' + (e && e.message ? e.message : e)));
+  });
+}
+function adminLogout(){ if(auth) auth.signOut(); }
+function adminHTML(){
+  if(!cloudConfigured()) return '';
+  let inner;
+  if(currentUser){
+    const who = esc(currentUser.email || currentUser.displayName || '');
+    inner = `<p class="muted" style="margin:6px 0">Sesión: <b>${who}</b>${isAdmin?' <span class="tag mvp">admin</span>':' <span class="hint">(sin permisos de admin)</span>'}</p>
+      <button class="btn ghost sm" data-action="admin-logout">Salir</button>`;
+  } else {
+    inner = `<button class="btn ghost sm" data-action="admin-login">Entrar como admin</button>`;
+  }
+  return `<h3 style="margin-top:16px">Administrador</h3>${inner}`;
+}
 
 /* ---------- Backups (copia semanal en la nube) ---------- */
 let backups = [];
@@ -736,19 +792,34 @@ function openCloudHelp(){
     <ol class="muted" style="padding-left:18px;line-height:1.75">
       <li>Entrá a <b>console.firebase.google.com</b> con tu cuenta de Google y creá un proyecto.</li>
       <li>Menú <b>Compilación → Firestore Database</b> → Crear base de datos → <b>modo producción</b>.</li>
-      <li>Pestaña <b>Reglas</b>: pegá las reglas de abajo y tocá Publicar.</li>
+      <li>Menú <b>Compilación → Authentication</b> → Comenzar → pestaña <b>Sign-in method</b> → habilitá <b>Google</b> y guardá.</li>
+      <li>Pestaña <b>Reglas</b> (en Firestore): pegá las reglas de abajo y tocá Publicar.</li>
       <li>Engranaje ⚙ → <b>Configuración del proyecto</b> → "Tus apps" → app <b>Web (&lt;/&gt;)</b> → copiá el objeto <b>firebaseConfig</b>.</li>
       <li>Pegalo en el campo de abajo y guardá. Listo.</li>
     </ol>
-    <p class="muted">Reglas (cualquiera con el link puede leer y cargar):</p>
+    <p class="muted">Reglas (cualquiera con el link puede leer, crear y editar; borrar partidos, borrar jugadores y editar partidos finalizados, solo el admin <b>${ADMIN_EMAIL}</b>; en un partido finalizado cualquiera puede agregar/quitar <b>comentarios</b>):</p>
     <pre class="rules">rules_version = '2';
 service cloud.firestore {
-  match /databases/{db}/documents {
-    match /players/{id} { allow read, write: if true; }
-    match /matches/{id} { allow read, write: if true; }
+  match /databases/{database}/documents {
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email != null
+        && request.auth.token.email.lower() == '${ADMIN_EMAIL}';
+    }
+    match /players/{id} {
+      allow read, create, update: if true;
+      allow delete: if isAdmin();
+    }
+    match /matches/{id} {
+      allow read, create: if true;
+      allow update: if !resource.data.closed || isAdmin()
+        || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['comments']);
+      allow delete: if isAdmin();
+    }
     match /backups/{id} { allow read, write: if true; }
   }
 }</pre>
+    <p class="muted">Para entrar como admin: en <b>Jugadores</b> → tarjeta <b>Nube</b> → <b>Entrar como admin</b> con <b>${ADMIN_EMAIL}</b>. Los demás no necesitan cuenta.</p>
     <div class="modal-actions"><button class="btn primary" data-action="modal-close">Entendido</button></div>
   `);
 }
@@ -1008,12 +1079,12 @@ function partidosHTML(){
     const title = m.rivalName ? `${esc(m.teamAName)} vs ${esc(m.rivalName)}`
                               : `${esc(m.teamAName)} vs ${esc(m.teamBName)}`;
     const _aM = awardId(m,'mvp'), _aG = awardId(m,'gk'), _aH = awardId(m,'hachazo'), _aP = awardId(m,'polemica');
-    const mvp = _aM ? `<span class="tag mvp">Figura: ${esc(pname(_aM))}</span>` : '';
-    const gk = _aG ? `<span class="tag gk">Arquero: ${esc(pname(_aG))}</span>` : '';
-    const hach = _aH ? `<span class="tag hachazo">Hachazo: ${esc(pname(_aH))}</span>` : '';
-    const pol = _aP ? `<span class="tag polemica">Polémica: ${esc(pname(_aP))}</span>` : '';
+    const mvp = _aM ? `<span class="tag mvp">👑 Figura: ${esc(pname(_aM))}</span>` : '';
+    const gk = _aG ? `<span class="tag gk">🧤 Arquero: ${esc(pname(_aG))}</span>` : '';
+    const hach = _aH ? `<span class="tag hachazo">🪓 Hachazo: ${esc(pname(_aH))}</span>` : '';
+    const pol = _aP ? `<span class="tag polemica">📣 Polémica: ${esc(pname(_aP))}</span>` : '';
     return `<article class="card match-card" data-action="open-match" data-id="${m.id}">
-      <div class="match-top"><span class="date">${fmtDate(m.date)}</span><span class="tags">${mvp}${gk}${hach}${pol}</span></div>
+      <div class="match-top"><span class="date">${fmtDate(m.date)}</span><span class="tags">${m.closed?'<span class="tag">🔒</span>':''}${mvp}${gk}${hach}${pol}</span></div>
       <div class="match-title">${title}</div>
       <div class="score"><b>${a}</b><span>-</span><b>${b}</b></div>
     </article>`;
@@ -1026,13 +1097,14 @@ function escabioPostHTML(){
   if(!ms.length) return '';
   if(!escabioMatchId || !ms.find(m=>m.id===escabioMatchId)) escabioMatchId = ms[0].id;
   const m = ms.find(x=>x.id===escabioMatchId);
+  const locked = !canEditMatch(m);
   const opts = ms.map(x=>`<option value="${x.id}" ${x.id===m.id?'selected':''}>${fmtDate(x.date)} · ${esc(x.teamAName)} vs ${esc(x.teamBName)}</option>`).join('');
 
   const cs = m.comments || [];
   const comments = cs.length ? cs.map(c=>`<div class="comment">
       <div class="comment-head">${faceForName(c.author,26)}<b>${esc(c.author||'Anónimo')}</b>
         <span class="comment-time">${c.ts?new Date(c.ts).toLocaleString():''}</span>
-        <button class="icon-btn" data-action="del-comment" data-id="${c.id}">×</button></div>
+        ${`<button class="icon-btn" data-action="del-comment" data-id="${c.id}">×</button>`}</div>
       <p class="comment-text">${esc(c.text)}</p>
     </div>`).join('') : '<p class="muted">Todavía no hay comentarios.</p>';
 
@@ -1042,6 +1114,7 @@ function escabioPostHTML(){
     <div class="escabio-total"><span class="esc-val" style="font-size:30px;min-width:0">${escTotal(m)}</span> <span class="muted">🍾 escabio del equipo</span></div>
     <h3 style="margin-top:16px">Comentarios <span class="hint">· ${cs.length}</span></h3>
     <div class="comment-list">${comments}</div>
+    ${locked ? `<p class="muted" style="text-align:center">🔒 Partido finalizado: solo se pueden agregar comentarios.</p>` : ''}
     <label>Tu nombre
       <span class="name-line"><span class="name-face" id="name-face">${faceForName(commentName,30)}</span>
       <input id="c-name" type="text" value="${esc(commentName)}" placeholder="Ej: Tuti" autocomplete="off"></span>
@@ -1056,15 +1129,17 @@ function matchDetailHTML(){
   if(!m){ currentMatchId=null; return partidosHTML(); }
   const a=scoreOf(m,'A'), b=scoreOf(m,'B');
   const isRival = m.mode==='rival';
+  const canEdit = canEditMatch(m);
+  const dis = canEdit ? '' : ' disabled';
 
   const assign = data.players.length ? data.players.map(p=>{
     const inA=m.teamA.includes(p.id), inB=m.teamB.includes(p.id);
     const bBtn = isRival ? '' :
-      `<button class="sidebtn ${inB?'on':''}" data-action="toggle-team" data-id="${p.id}" data-side="B">B</button>`;
+      `<button class="sidebtn ${inB?'on':''}" data-action="toggle-team" data-id="${p.id}" data-side="B"${dis}>B</button>`;
     return `<div class="assign-row">
       <span class="pname">${playerAvatar(p,30)}${p.number?`<span class="num">${esc(p.number)}</span>`:''}${esc(pname(p.id))}${invBadge(p)}</span>
       <div class="side-btns">
-        <button class="sidebtn ${inA?'on':''}" data-action="toggle-team" data-id="${p.id}" data-side="A">${isRival?'Juega':'A'}</button>
+        <button class="sidebtn ${inA?'on':''}" data-action="toggle-team" data-id="${p.id}" data-side="A"${dis}>${isRival?'Juega':'A'}</button>
         ${bBtn}
       </div>
     </div>`;
@@ -1083,62 +1158,42 @@ function matchDetailHTML(){
     return `<div class="goal-row">
       <span class="goal-side">${esc(sideName)}</span>
       <span class="goal-main">${scorer}${as}</span>
-      <button class="icon-btn" data-action="del-goal" data-id="${ev.id}">×</button>
+      ${canEdit ? `<button class="icon-btn" data-action="del-goal" data-id="${ev.id}">×</button>` : ''}
     </div>`;
   }).join('') : '<p class="muted">Sin goles registrados.</p>';
 
   const played = isRival ? m.teamA : [...m.teamA, ...m.teamB];
   const mvpOpts = played.map(id=>`<option value="${id}" ${m.mvpId===id?'selected':''}>${esc(pname(id))}</option>`).join('');
   const mvpSelect = played.length
-    ? `<select id="mvp-select"><option value="">Sin definir</option>${mvpOpts}</select>`
+    ? `<select id="mvp-select"${dis}><option value="">Sin definir</option>${mvpOpts}</select>`
     : `<p class="muted">Asigná jugadores primero.</p>`;
 
   const hachazoOpts = played.map(id=>`<option value="${id}" ${m.hachazoId===id?'selected':''}>${esc(pname(id))}</option>`).join('');
   const hachazoSelect = played.length
-    ? `<select id="hachazo-select"><option value="">Sin definir</option>${hachazoOpts}</select>`
+    ? `<select id="hachazo-select"${dis}><option value="">Sin definir</option>${hachazoOpts}</select>`
     : `<p class="muted">Asigná jugadores primero.</p>`;
   const polOpts = played.map(id=>`<option value="${id}" ${m.polemicaId===id?'selected':''}>${esc(pname(id))}</option>`).join('');
   const polSelect = played.length
-    ? `<select id="polemica-select"><option value="">Sin definir</option>${polOpts}</select>`
+    ? `<select id="polemica-select"${dis}><option value="">Sin definir</option>${polOpts}</select>`
     : `<p class="muted">Asigná jugadores primero.</p>`;
   const gkOpts = played.map(id=>`<option value="${id}" ${m.gkId===id?'selected':''}>${esc(pname(id))}</option>`).join('');
   const gkSelect = played.length
-    ? `<select id="gk-select"><option value="">Sin definir</option>${gkOpts}</select>`
+    ? `<select id="gk-select"${dis}><option value="">Sin definir</option>${gkOpts}</select>`
     : `<p class="muted">Asigná jugadores primero.</p>`;
-
-  // votación
-  const voterId = getVoterId();
-  const voterOpts = played.map(id=>`<option value="${id}" ${voterId===id?'selected':''}>${esc(pname(id))}</option>`).join('');
-  const voterSelect = played.length
-    ? `<label>¿Quién sos?<select id="voter-sel"><option value="">— elegí tu nombre —</option>${voterOpts}</select></label>`
-    : '';
-  const catLabel = {mvp:'Figura', gk:'Arquero', hachazo:'Hachazo', polemica:'Polémica'};
-  const voteControls = played.length ? ['mvp','gk','hachazo','polemica'].map(cat=>{
-    const cur = (m.votes && m.votes[cat] && m.votes[cat][voterId] && m.votes[cat][voterId].id) || '';
-    const o = played.map(id=>`<option value="${id}" ${cur===id?'selected':''}>${esc(pname(id))}</option>`).join('');
-    return `<label>${catLabel[cat]}<select class="vote-sel" data-cat="${cat}"><option value="">— sin voto —</option>${o}</select></label>`;
-  }).join('') : '';
-  const voteSummary = played.length ? ['mvp','gk','hachazo','polemica'].map(cat=>{
-    const tally = voteTally(m,cat);
-    const parts = Object.entries(tally).sort((x,y)=>y[1]-x[1]).map(([id,c])=>`${esc(pname(id))} ${c}`);
-    const w = voteWinner(m,cat);
-    const win = w ? (w.tie ? 'empate' : 'gana '+esc(pname(w.id))) : 'sin votos';
-    return `<div class="vote-line"><b>${catLabel[cat]}</b>: ${parts.length?parts.join(' · '):'—'} <span class="muted">· ${win}</span></div>`;
-  }).join('') : '';
 
   return `
     <button class="btn ghost sm" data-action="back" style="margin-bottom:14px">← Volver</button>
     <div class="card">
-      <div class="date" style="text-align:center;margin-bottom:8px">${fmtDate(m.date)}</div>
+      <div class="date" style="text-align:center;margin-bottom:8px">${fmtDate(m.date)} ${m.closed?'<span class="tag mvp">🔒 Finalizado</span>':''}</div>
       <div class="board">
         <div class="team"><div class="nm">${esc(m.teamAName)}</div><div class="go">${a}</div></div>
         <div class="vs">VS</div>
         <div class="team"><div class="nm">${esc(m.teamBName)}</div><div class="go">${b}</div></div>
       </div>
-      <div class="grid2" style="margin-top:10px">
+      ${canEdit ? `<div class="grid2" style="margin-top:10px">
         <button class="btn primary sm" data-action="add-goal" data-side="A">+ Gol ${esc(m.teamAName)}</button>
         <button class="btn primary sm" data-action="add-goal" data-side="B">+ Gol ${esc(m.teamBName)}</button>
-      </div>
+      </div>` : `<p class="muted" style="text-align:center;margin-top:8px">🔒 Partido finalizado. Los datos no se pueden editar.</p>`}
     </div>
 
     <div class="card">
@@ -1147,69 +1202,46 @@ function matchDetailHTML(){
     </div>
 
     <div class="card">
-      <h3>Votación <span class="hint">· 1 voto por persona</span></h3>
-      ${voterSelect}
-      ${voteControls || '<p class="muted">Asigná jugadores primero.</p>'}
-      ${voteSummary}
-    </div>
-
-    <div class="card">
-      <h3>Figura del partido <span class="hint">(manual / desempate)</span></h3>
+      <h3>👑 Figura del partido <span class="hint">(manual)</span></h3>
       ${mvpSelect}
     </div>
 
     <div class="card">
-      <h3>Mejor arquero <span class="hint">(manual / si hubo)</span></h3>
+      <h3>🧤 Mejor arquero <span class="hint">(manual / si hubo)</span></h3>
       ${gkSelect}
     </div>
 
     <div class="card">
-      <h3>Hachazo <span class="hint">(manual)</span></h3>
+      <h3>🪓 Hachazo <span class="hint">(manual)</span></h3>
       ${hachazoSelect}
     </div>
 
     <div class="card">
-      <h3>Polémica <span class="hint">(manual)</span></h3>
+      <h3>📣 Polémica <span class="hint">(manual)</span></h3>
       ${polSelect}
     </div>
 
     <div class="card">
       <h3>${isRival?'Quiénes juegan':'Armar los equipos'}
         <span class="hint">· A: ${m.teamA.length}${isRival?'':' · B: '+m.teamB.length}</span></h3>
-      ${isRival?'':`<div class="toolbar" style="margin-bottom:12px">
+      ${canEdit && !isRival ? `<div class="toolbar" style="margin-bottom:12px">
         <button class="btn primary sm" data-action="shuffle-teams">Sortear equipos</button>
         <button class="btn ghost sm" data-action="clear-teams">Vaciar</button>
       </div>
-      <p class="muted" style="margin:0 0 10px">Marcá quiénes juegan con A o B y tocá <b>Sortear</b> para repartirlos al azar en partes iguales.</p>`}
-      ${guestAdd}
+      <p class="muted" style="margin:0 0 10px">Marcá quiénes juegan con A o B y tocá <b>Sortear</b> para repartirlos al azar en partes iguales.</p>` : ''}
+      ${canEdit ? guestAdd : ''}
       ${assign}
     </div>
 
-    <button class="btn danger block" data-action="delete-match" data-id="${m.id}">Eliminar partido</button>
+    ${m.closed && (isAdmin || DEMO) ? `<button class="btn ghost block" data-action="reopen-match" data-id="${m.id}" style="margin-bottom:10px">Reabrir partido</button>` : ''}
+    ${!m.closed ? `<button class="btn primary block" data-action="close-match" data-id="${m.id}" style="margin-bottom:10px">Finalizar partido</button>` : ''}
+    ${isAdmin || DEMO ? `<button class="btn danger block" data-action="delete-match" data-id="${m.id}">Eliminar partido</button>` : ''}
   `;
 }
 
-/* ---------- Votación (figura, arquero, hachazo, polémica) ---------- */
-const VOTE_CATS = [['mvp','Figura'],['gk','Arquero'],['hachazo','Hachazo'],['polemica','Polémica']];
-function getVoterId(){ return localStorage.getItem('pmfc_voter_id') || ''; }
-function normVoter(s){ return String(s||'').trim().toLowerCase(); }
-function voteTally(m, cat){
-  const v = (m.votes && m.votes[cat]) || {};
-  const c = {};
-  Object.values(v).forEach(b=>{ if(b && b.id) c[b.id] = (c[b.id]||0) + 1; });
-  return c;
-}
-function voteWinner(m, cat){
-  const c = voteTally(m, cat);
-  let best=null, max=0, tie=false;
-  for(const k in c){ if(c[k] > max){ max=c[k]; best=k; tie=false; } else if(c[k]===max){ tie=true; } }
-  return max>0 ? {id:best, max, tie} : null;
-}
+/* ---------- Premios del partido (manuales: figura, arquero, hachazo, polémica) ---------- */
 function awardId(m, cat){
-  const w = voteWinner(m, cat);
-  const manual = { mvp:m.mvpId, gk:m.gkId, hachazo:m.hachazoId, polemica:m.polemicaId }[cat];
-  if(w && !w.tie) return w.id;
-  return manual || (w ? w.id : null);
+  return { mvp:m.mvpId, gk:m.gkId, hachazo:m.hachazoId, polemica:m.polemicaId }[cat] || null;
 }
 
 /* ---------- Estadísticas ---------- */
@@ -1255,18 +1287,25 @@ function rankCats(){
     goles:  ['Goles',            s=>s.goles],
     asist:  ['Asistencias',      s=>s.asist],
     ga:     ['Goles + Asist.',   s=>s.goles+s.asist],
-    mvp:    ['Figuras',          s=>s.mvp],
-    gk:     ['Mejor arquero',    s=>s.gk],
+    mvp:    ['👑 Figuras',       s=>s.mvp],
+    gk:     ['🧤 Mejor arquero', s=>s.gk],
     pj:     ['Partidos jugados', s=>s.pj],
     v:      ['Victorias',        s=>s.v],
     d:      ['Derrotas',         s=>s.d],
-    invicto:['Invictos',         s=>s.v+s.e],
-    racha:  ['Racha invicta',    s=>s.racha],
-    escabio:['Escabio',          s=>s.escabio],
-    hachazos:['Hachazos',        s=>s.hachazos],
-    polemicas:['Polémica',       s=>s.polemicas]
+    invicto:['Invictos',         s=>s.racha],
+    racha:  ['Racha invicta',    s=>s.rachaAct],
+    hachazos:['🪓 Hachazos',     s=>s.hachazos],
+    polemicas:['📣 Polémica',    s=>s.polemicas]
   };
 }
+const RANK_HELP = {
+  mvp:      '👑 Figura: el mejor jugador del partido.',
+  gk:       '🧤 Mejor arquero: el arquero más destacado del partido.',
+  invicto:  'Invictos: máxima cantidad de partidos seguidos sin perder (mejor racha histórica).',
+  racha:    'Racha invicta: partidos sin perder que lleva el jugador en la actualidad.',
+  hachazos: '🪓 Hachazo: el jugador más pegador del partido.',
+  polemicas:'📣 Polémica: el jugador que generó más polémica en el partido.'
+};
 function rankingHTML(){
   const cats = rankCats();
   const st = computeStats();
@@ -1276,15 +1315,20 @@ function rankingHTML(){
     .sort((x,y)=> fn(y.s)-fn(x.s) || y.s.goles-x.s.goles || y.s.asist-x.s.asist || x.p.name.localeCompare(y.p.name));
   const pills = Object.keys(cats).map(k=>`<button class="cat-pill ${rankCat===k?'on':''}" data-action="rank-cat" data-cat="${k}">${esc(cats[k][0])}</button>`).join('');
   const head = `<div class="section-head"><h2>Ranking</h2></div><div class="cat-pills">${pills}</div>`;
+  const help = RANK_HELP[rankCat] ? `<div class="cat-help">${esc(RANK_HELP[rankCat])}</div>` : '';
   if(!rows.length) return `<div class="card">${head}<p class="muted">Sin datos todavía.</p></div>`;
-  const pod = rows.slice(0,3).map((r,i)=>`
+  const pod = rows.slice(0,3).map((r,i)=>{
+    const icon = i===0 ? ({mvp:'👑', hachazos:'🪓', polemicas:'📣', d:'🌩️'}[rankCat] || '') : '';
+    return `
     <div class="podium-item p${i+1}">
       <span class="medal">${i+1}°</span>
+      ${icon ? `<span class="pod-icon pod-${rankCat}">${icon}</span>` : ''}
       ${playerAvatarBust(r.p,54)}
       <span class="podium-name">${esc(pname(r.p.id))}</span>
       <span class="podium-val">${fn(r.s)}</span>
       <span class="podium-cat">${esc(label)}</span>
-    </div>`).join('');
+    </div>`;
+  }).join('');
   const rest = rows.map((r,i)=>`
     <div class="rank-row clickable" data-action="open-player" data-id="${r.p.id}">
       <span class="rank-pos">${i+1}</span>
@@ -1292,13 +1336,14 @@ function rankingHTML(){
       <span class="rank-name">${esc(r.p.name)}${invBadge(r.p)} <span class="rank-sub">· ${r.s.pj} PJ</span></span>
       <span class="rank-val">${fn(r.s)}</span>
     </div>`).join('');
-  return `<div class="card">${head}<div class="podium">${pod}</div><div class="rank-list">${rest}</div></div>`;
+  const podiumBlock = help ? `<div class="podium-wrap"><div class="podium">${pod}</div>${help}</div>` : `<div class="podium">${pod}</div>`;
+  return `<div class="card">${head}${podiumBlock}<div class="rank-list">${rest}</div></div>`;
 }
 
 function statsHTML(){
   const st = computeStats();
   const rows = data.players.map(p=>({p, s:st[p.id]}))
-    .filter(r=> r.s.pj || r.s.goles || r.s.asist || r.s.mvp || r.s.gk || r.s.escabio)
+    .filter(r=> r.s.pj || r.s.goles || r.s.asist || r.s.mvp || r.s.gk)
     .sort((x,y)=> y.s.goles-x.s.goles || y.s.asist-x.s.asist || y.s.v-x.s.v || x.p.name.localeCompare(y.p.name));
   const head = `<div class="section-head"><h2>Estadísticas</h2></div>`;
   if(!rows.length){
@@ -1324,38 +1369,43 @@ function statsHTML(){
     <td class="c gold">${r.s.racha||''}</td>
     <td class="c loss">${r.s.hachazos||''}</td>
     <td class="c loss">${r.s.polemicas||''}</td>
-    <td class="c">${r.s.escabio||''}</td>
     <td class="c">${r.s.mvp||''}</td>
     <td class="c">${r.s.gk||''}</td>
   </tr>`).join('');
-  return head + rankingHTML() + summary + escabioTableHTML() + `<div class="card"><div class="table-wrap"><table class="table">
-    <thead><tr><th class="c">#</th><th>Jugador</th><th class="c">PJ</th><th class="c">G</th><th class="c">A</th><th class="c">V</th><th class="c">E</th><th class="c">D</th><th class="c">Rach</th><th class="c">Hach</th><th class="c">Polém</th><th class="c">Esc</th><th class="c">MVP</th><th class="c">Arq</th></tr></thead>
+  return head + rankingHTML() + summary + `<div class="card"><div class="table-wrap"><table class="table">
+    <thead><tr><th class="c">#</th><th>Jugador</th><th class="c">PJ</th><th class="c">G</th><th class="c">A</th><th class="c">V</th><th class="c">E</th><th class="c">D</th><th class="c">Rach</th><th class="c">Hach</th><th class="c">Polém</th><th class="c">MVP</th><th class="c">Arq</th></tr></thead>
     <tbody>${body}</tbody>
   </table></div></div>
-  <p class="muted" style="text-align:center">PJ: jugados · G: goles · A: asistencias · V: ganados · E: empatados · D: perdidos · Rach: mejor racha invicta · Hach: hachazos · Polém: polémicas · Esc: escabios · MVP: figura · Arq: mejor arquero</p>`;
+  <p class="muted" style="text-align:center">PJ: jugados · G: goles · A: asistencias · V: ganados · E: empatados · D: perdidos · Rach: mejor racha invicta · Hach: hachazos · Polém: polémicas · MVP: figura · Arq: mejor arquero</p>` + escabioChartHTML();
 }
 
-function escabioTableHTML(){
-  const cols = [...data.matches].filter(m=> escTotal(m) > 0)
-    .sort((a,b)=>(a.date||'').localeCompare(b.date||''));
-  if(!cols.length) return '';
-  const rows = data.players.map(p=>({p, total: cols.reduce((s,m)=>s+escQty(m,p.id),0)}))
-    .filter(r=> r.total > 0)
-    .sort((x,y)=> y.total - x.total || x.p.name.localeCompare(y.p.name));
-  if(!rows.length) return '';
+function escabioChartHTML(){
   const short = d => d ? `${d.slice(8,10)}/${d.slice(5,7)}` : 's/f';
-  const head = `<tr><th class="c">#</th><th>Jugador</th>${cols.map(m=>`<th class="c">${short(m.date)}</th>`).join('')}<th class="c">Total</th></tr>`;
-  const body = rows.map((r,i)=>`<tr>
-    <td class="c"><span class="rk">${i+1}</span></td>
-    <td class="clickable" data-action="open-player" data-id="${r.p.id}"><span class="pname">${playerAvatarBust(r.p,24)}${esc(pname(r.p.id))}</span></td>
-    ${cols.map(m=>{ const q=escQty(m,r.p.id); return `<td class="c">${q||''}</td>`; }).join('')}
-    <td class="c gold"><b>${r.total}</b></td>
-  </tr>`).join('');
-  const foot = `<tr><td class="c"></td><td><b>Total del día</b></td>${cols.map(m=>`<td class="c gold"><b>${escTotal(m)}</b></td>`).join('')}<td class="c gold"><b>${rows.reduce((s,r)=>s+r.total,0)}</b></td></tr>`;
-  return `<div class="card"><h3>🍾 Escabio · tabla general</h3>
-    <div class="table-wrap" style="margin-top:8px"><table class="table">
-      <thead>${head}</thead><tbody>${body}${foot}</tbody></table></div>
-    <p class="muted">Cantidad de escabio por jugador en cada fecha. Última columna: total de cada uno. Última fila: total del equipo ese día.</p>
+  const pts = [...data.matches]
+    .filter(m=> m.date)
+    .sort((a,b)=>(a.date||'').localeCompare(b.date||''))
+    .map(m=>({ date:m.date, v: escTotal(m) }));
+  if(pts.length < 2 || !pts.some(p=>p.v>0)) return '';
+  const W=320, H=150, padL=22, padR=10, padT=12, padB=24;
+  const iw = W-padL-padR, ih = H-padT-padB;
+  const maxV = Math.max(1, ...pts.map(p=>p.v));
+  const x = i => pts.length>1 ? padL + iw*i/(pts.length-1) : padL + iw/2;
+  const y = v => padT + ih - ih*(v/maxV);
+  const line = pts.map((p,i)=>`${i?'L':'M'}${x(i).toFixed(1)},${y(p.v).toFixed(1)}`).join(' ');
+  const area = `${line} L${x(pts.length-1).toFixed(1)},${(padT+ih).toFixed(1)} L${x(0).toFixed(1)},${(padT+ih).toFixed(1)} Z`;
+  const grid = [0,0.5,1].map(f=>`<line x1="${padL}" y1="${(padT+ih*f).toFixed(1)}" x2="${W-padR}" y2="${(padT+ih*f).toFixed(1)}" stroke="rgba(255,255,255,.12)" stroke-width="1"/>`).join('')
+    + `<text x="2" y="${padT+4}" fill="#c9b7ba" font-size="9">${maxV}</text><text x="2" y="${padT+ih+3}" fill="#c9b7ba" font-size="9">0</text>`;
+  const dots = pts.map((p,i)=>`<circle cx="${x(i).toFixed(1)}" cy="${y(p.v).toFixed(1)}" r="3" fill="#f2b705" stroke="#7d2233" stroke-width="1.5"/>`).join('');
+  const step = Math.ceil(pts.length/6);
+  const labels = pts.map((p,i)=> (i%step===0 || i===pts.length-1) ? `<text x="${x(i).toFixed(1)}" y="${H-7}" fill="#c9b7ba" font-size="9" text-anchor="middle">${short(p.date)}</text>` : '').join('');
+  return `<div class="card"><h3>🍾 Escabio por partido</h3>
+    <svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Escabio por partido" style="display:block;margin-top:6px">
+      ${grid}
+      <path d="${area}" fill="rgba(242,183,5,.12)"/>
+      <path d="${line}" fill="none" stroke="#f2b705" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+      ${dots}${labels}
+    </svg>
+    <p class="muted" style="text-align:center">Cuánto se tomó en cada partido (total del equipo).</p>
   </div>`;
 }
 
@@ -1405,8 +1455,8 @@ function playerDetailHTML(){
     const g = (m.events||[]).filter(ev=> ev.side===side && ev.scorerId===p.id).length;
     const as = (m.events||[]).filter(ev=> ev.side===side && ev.assistId===p.id).length;
     const oppName = side==='A' ? m.teamBName : m.teamAName;
-    const mvp = awardId(m,'mvp')===p.id ? '<span class="tag mvp">Figura</span>' : '';
-    const gk = awardId(m,'gk')===p.id ? '<span class="tag gk">Arquero</span>' : '';
+    const mvp = awardId(m,'mvp')===p.id ? '<span class="tag mvp">👑 Figura</span>' : '';
+    const gk = awardId(m,'gk')===p.id ? '<span class="tag gk">🧤 Arquero</span>' : '';
     const contrib = `${g?`<span class="pill gold">${g} G</span>`:''}${as?`<span class="pill">${as} A</span>`:''}`;
     return `<div class="log-row">
       <span class="res ${rc}">${res}</span>
@@ -1514,7 +1564,7 @@ function jugadoresHTML(){
       <span class="pname">${playerAvatar(p,30)}${p.number?`<span class="num">${esc(p.number)}</span>`:''}${esc(p.name)}
         ${p.nickname?`<span class="muted">· ${esc(p.nickname)}</span>`:''}
         ${playerPositions(p).length?`<span class="muted">(${esc(playerPositions(p).join(' · '))})</span>`:''}${invBadge(p)}</span>
-      <button class="icon-btn" data-action="del-player" data-id="${p.id}">×</button>
+      ${isAdmin || DEMO ? `<button class="icon-btn" data-action="del-player" data-id="${p.id}">×</button>` : ''}
     </div>`;
   const roster = data.players.filter(p=>!p.guest);
   const guests = data.players.filter(p=>p.guest);
@@ -1559,7 +1609,8 @@ function jugadoresHTML(){
              ? `<div class="toolbar">
                   <button class="btn ghost sm" data-action="cloud-help">Ayuda</button>
                 </div>
-                <p class="muted" style="margin-top:10px">Todo lo que cargues se guarda en la nube y el equipo lo ve al instante. La nube es la fuente de verdad.</p>`
+                <p class="muted" style="margin-top:10px">Todo lo que cargues se guarda en la nube y el equipo lo ve al instante. La nube es la fuente de verdad.</p>
+                ${adminHTML()}`
              : `<p class="muted">Conectá la base de datos para que los datos los vea y cargue todo el equipo.</p>
                 <button class="btn ghost block" data-action="cloud-help" style="margin-bottom:12px">¿Cómo conecto?</button>
                 <label>Pegá acá tu <b>firebaseConfig</b>
@@ -1591,7 +1642,7 @@ function jugadoresHTML(){
       <details class="help"><summary>Post-partido: escabio y comentarios</summary>
         <p class="muted">En <b>Partidos</b>, abajo, elegí el partido en el selector. Cargá el <b>Escabio</b> con − / + y dejá <b>Comentarios</b> con tu nombre.</p></details>
       <details class="help"><summary>Ranking y estadísticas</summary>
-        <p class="muted">En <b>Estadísticas</b> tenés el ranking con podio (tocá las categorías: goles, asistencias, figuras, partidos jugados, victorias, derrotas, escabio) y la tabla completa.</p></details>
+        <p class="muted">En <b>Estadísticas</b> tenés el ranking con podio (tocá las categorías: goles, asistencias, figuras, partidos jugados, victorias, derrotas) y la tabla completa, con un gráfico de escabio por partido al final.</p></details>
       <details class="help"><summary>Ficha de cada jugador</summary>
         <p class="muted">Tocá un jugador en <b>Jugadores</b> o <b>Estadísticas</b> para ver su registro y el detalle partido a partido.</p></details>
       <details class="help"><summary>Datos compartidos (nube)</summary>
@@ -1667,7 +1718,7 @@ function createMatch(){
   currentMatchId = m.id; view='partidos'; render();
 }
 function toggleTeam(pid, side){
-  const m = data.matches.find(x=>x.id===currentMatchId); if(!m) return;
+  const m = data.matches.find(x=>x.id===currentMatchId); if(!canEditMatch(m)) return;
   const arr = side==='A' ? m.teamA : m.teamB;
   const other = side==='A' ? m.teamB : m.teamA;
   const i = arr.indexOf(pid);
@@ -1676,7 +1727,7 @@ function toggleTeam(pid, side){
   save(); persistMatch(m); render();
 }
 function shuffleTeams(){
-  const m = data.matches.find(x=>x.id===currentMatchId); if(!m) return;
+  const m = data.matches.find(x=>x.id===currentMatchId); if(!canEditMatch(m)) return;
   const pool = [...new Set([...(m.teamA||[]), ...(m.teamB||[])])];
   if(pool.length < 2){ alert('Marcá al menos 2 jugadores en A o B para poder sortear.'); return; }
   for(let i=pool.length-1;i>0;i--){ const j = Math.floor(Math.random()*(i+1)); [pool[i],pool[j]] = [pool[j],pool[i]]; }
@@ -1688,12 +1739,12 @@ function shuffleTeams(){
   save(); persistMatch(m); render();
 }
 function clearTeams(){
-  const m = data.matches.find(x=>x.id===currentMatchId); if(!m) return;
+  const m = data.matches.find(x=>x.id===currentMatchId); if(!canEditMatch(m)) return;
   m.teamA = []; m.teamB = [];
   save(); persistMatch(m); render();
 }
 function escAdjust(pid, delta){
-  const m = data.matches.find(x=>x.id===escabioMatchId); if(!m) return;
+  const m = data.matches.find(x=>x.id===escabioMatchId); if(!canEditMatch(m)) return;
   if(!m.escabio || Array.isArray(m.escabio)) m.escabio = migEsc(m);
   let q = (Number(m.escabio[pid]) || 0) + delta;
   if(q < 0) q = 0;
@@ -1710,15 +1761,15 @@ function addComment(){
   if(name){ commentName = name; localStorage.setItem('pmfc_name', name); }
   if(!m.comments) m.comments = [];
   m.comments.push({ id: uid(), author: name || 'Anónimo', text, ts: Date.now() });
-  save(); persistMatch(m); render();
+  save(); persistComments(m); render();
 }
 function delComment(cid){
   const m = data.matches.find(x=>x.id===escabioMatchId); if(!m || !m.comments) return;
   m.comments = m.comments.filter(c=>c.id!==cid);
-  save(); persistMatch(m); render();
+  save(); persistComments(m); render();
 }
 function confirmGoal(){
-  const m = data.matches.find(x=>x.id===currentMatchId); if(!m) return;
+  const m = data.matches.find(x=>x.id===currentMatchId); if(!canEditMatch(m)) return;
   const side = $('#g-side').value;
   const scorerId = $('#g-scorer').value || null;
   const assistEl = $('#g-assist');
@@ -1728,13 +1779,37 @@ function confirmGoal(){
   sfx('goal'); save(); persistMatch(m); closeModal(); render();
 }
 function delGoal(id){
-  const m = data.matches.find(x=>x.id===currentMatchId); if(!m) return;
+  const m = data.matches.find(x=>x.id===currentMatchId); if(!canEditMatch(m)) return;
   m.events = m.events.filter(e=>e.id!==id); save(); persistMatch(m); render();
 }
 function deleteMatch(id){
+  if(!isAdmin && !DEMO){ alert('Solo el administrador ('+ADMIN_EMAIL+') puede eliminar partidos.'); return; }
   if(!confirm('¿Eliminar este partido y sus estadísticas?')) return;
   data.matches = data.matches.filter(m=>m.id!==id);
   currentMatchId=null; save(); removeMatchDoc(id); render();
+}
+function closeMatch(id){
+  const m = data.matches.find(x=>x.id===id); if(!m) return;
+  if(!confirm('¿Finalizar el partido? Quedará bloqueado y no se podrán cambiar sus datos.')) return;
+  m.closed = true; save(); persistMatch(m); render();
+}
+function reopenMatch(id){
+  if(!isAdmin && !DEMO){ alert('Solo el administrador puede reabrir un partido.'); return; }
+  const m = data.matches.find(x=>x.id===id); if(!m) return;
+  m.closed = false; save(); persistMatch(m); render();
+}
+function todayStr(){
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function autoCloseOldMatches(){
+  if(DEMO) return;
+  const today = todayStr();
+  let changed = false;
+  data.matches.forEach(m=>{
+    if(m && !m.closed && m.date && m.date < today){ m.closed = true; persistMatch(m); changed = true; }
+  });
+  if(changed) save();
 }
 function addPlayer(){
   const name = $('#p-name').value.trim();
@@ -1755,7 +1830,7 @@ function addGuest(side){
   const el = document.getElementById('g-name');
   const name = el ? el.value.trim() : '';
   if(!name){ alert('Escribí el nombre del invitado.'); return; }
-  const m = data.matches.find(x=>x.id===currentMatchId); if(!m) return;
+  const m = data.matches.find(x=>x.id===currentMatchId); if(!canEditMatch(m)) return;
   const p = { id: uid(), name, nickname:'', number:'', positions:[], guest:true, face: randomFace() };
   data.players.push(p);
   if(side === 'B') m.teamB.push(p.id); else m.teamA.push(p.id);
@@ -1783,6 +1858,7 @@ function updateFacePreview(){
   });
 }
 function delPlayer(id){
+  if(!isAdmin && !DEMO){ alert('Solo el administrador ('+ADMIN_EMAIL+') puede eliminar jugadores.'); return; }
   const p = getPlayer(id); if(!p) return;
   if(!confirm(`¿Eliminar a ${p.name}?`)) return;
   data.players = data.players.filter(x=>x.id!==id);
@@ -2044,6 +2120,10 @@ document.addEventListener('click', e=>{
     case 'confirm-goal': confirmGoal(); break;
     case 'del-goal': delGoal(id); break;
     case 'delete-match': deleteMatch(id); break;
+    case 'close-match': closeMatch(id); break;
+    case 'reopen-match': reopenMatch(id); break;
+    case 'admin-login': adminLogin(); break;
+    case 'admin-logout': adminLogout(); break;
     case 'modal-close': closeModal(); break;
     case 'overlay': if(e.target===t) closeModal(); break;
     case 'export': exportData(); break;
@@ -2066,33 +2146,19 @@ document.addEventListener('change', e=>{
   if(e.target.id==='esc-match'){ escabioMatchId = e.target.value; render(); }
   if(e.target.id==='mvp-select'){
     const m = data.matches.find(x=>x.id===currentMatchId);
-    if(m){ m.mvpId = e.target.value || null; sfx('mvp'); save(); persistMatch(m); }
+    if(m && canEditMatch(m)){ m.mvpId = e.target.value || null; sfx('mvp'); save(); persistMatch(m); }
   }
   if(e.target.id==='gk-select'){
     const m = data.matches.find(x=>x.id===currentMatchId);
-    if(m){ m.gkId = e.target.value || null; sfx('mvp'); save(); persistMatch(m); render(); }
+    if(m && canEditMatch(m)){ m.gkId = e.target.value || null; sfx('mvp'); save(); persistMatch(m); render(); }
   }
   if(e.target.id==='hachazo-select'){
     const m = data.matches.find(x=>x.id===currentMatchId) || data.matches.find(x=>x.id===escabioMatchId);
-    if(m){ m.hachazoId = e.target.value || null; save(); persistMatch(m); render(); }
+    if(m && canEditMatch(m)){ m.hachazoId = e.target.value || null; save(); persistMatch(m); render(); }
   }
   if(e.target.id==='polemica-select'){
     const m = data.matches.find(x=>x.id===currentMatchId) || data.matches.find(x=>x.id===escabioMatchId);
-    if(m){ m.polemicaId = e.target.value || null; save(); persistMatch(m); render(); }
-  }
-  if(e.target.classList && e.target.classList.contains('vote-sel')){
-    const m = data.matches.find(x=>x.id===currentMatchId); if(!m) return;
-    const voterId = getVoterId();
-    if(!voterId){ alert('Elegí tu nombre arriba para votar.'); e.target.value=''; return; }
-    const cat = e.target.dataset.cat;
-    m.votes = m.votes || {}; m.votes[cat] = m.votes[cat] || {};
-    if(e.target.value) m.votes[cat][voterId] = { by: pname(voterId), id:e.target.value };
-    else delete m.votes[cat][voterId];
-    save(); persistMatch(m); render();
-  }
-  if(e.target.id==='voter-sel'){
-    localStorage.setItem('pmfc_voter_id', e.target.value);
-    render();
+    if(m && canEditMatch(m)){ m.polemicaId = e.target.value || null; save(); persistMatch(m); render(); }
   }
 });
 document.addEventListener('input', e=>{
@@ -2123,6 +2189,7 @@ if(DEMO){
 
 updateSfxBtn();
 updateHimnoBtn();
+autoCloseOldMatches();
 render();
 initCloud();
 </script>

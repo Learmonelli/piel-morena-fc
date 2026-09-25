@@ -31,6 +31,8 @@ Aplicación web **mobile-first** para que un equipo amateur de fútbol 7 lleve l
 - **Ranking con podio** con categorías: goles, asistencias, goles+asist., figuras, partidos jugados, victorias, derrotas y escabio.
 - **Post-partido**: registro de "escabio" por cantidad (stepper −/+) y **comentarios** por partido.
 - **Ficha de cada jugador**: totales + historial partido a partido.
+- **Finalizar partido**: al cerrar un partido sus datos quedan bloqueados para todos (solo el admin puede reabrirlo), pero se pueden seguir agregando **comentarios**. Además, los partidos se finalizan **automáticamente al día siguiente** de su fecha.
+- **Admin**: borrar partidos, borrar jugadores y reabrir partidos finalizados queda restringido al administrador (`leandroarmonelli@gmail.com`), que entra con Google. El resto del equipo sigue sin registrarse (puede crear y editar).
 - **Datos en tiempo real**: todo se guarda en la nube (Firebase Firestore) y se sincroniza al instante entre dispositivos.
 - **Tema "Cancha arcade"**: fondo de cancha pixelada, tipografías retro y paneles vinotinto.
 - **Audio 8-bit generado con Web Audio API**: efectos (gol, figura) y un **himno original** en loop.
@@ -110,13 +112,26 @@ SPA de un solo archivo. El estado de la app (`{ players, matches }`) vive en Fir
 }
 ```
 
-Reglas de seguridad de Firestore usadas (acceso abierto por link):
+Reglas de seguridad de Firestore usadas (lectura y carga abiertas por link; borrar partidos y editar partidos finalizados solo para el admin):
 ```
 rules_version = '2';
 service cloud.firestore {
-  match /databases/{db}/documents {
-    match /players/{id} { allow read, write: if true; }
-    match /matches/{id} { allow read, write: if true; }
+  match /databases/{database}/documents {
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email != null
+        && request.auth.token.email.lower() == 'leandroarmonelli@gmail.com';
+    }
+    match /players/{id} {
+      allow read, create, update: if true;
+      allow delete: if isAdmin();
+    }
+    match /matches/{id} {
+      allow read, create: if true;
+      allow update: if !resource.data.closed || isAdmin()
+        || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['comments']);
+      allow delete: if isAdmin();
+    }
     match /backups/{id} { allow read, write: if true; }
   }
 }
