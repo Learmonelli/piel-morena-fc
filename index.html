@@ -445,7 +445,7 @@
       </svg>
       <div>
         <h1>Piel Morena FC</h1>
-        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v73</span></p>
+        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v74</span></p>
       </div>
     </div>
     <div class="header-btns">
@@ -666,6 +666,7 @@ async function initCloud(){
         currentUser = u || null;
         isAdmin = isAdminEmail(currentUser);
         render();
+        autoCloseOldMatches();
       });
     }
 
@@ -703,7 +704,7 @@ function removePlayerDoc(id){ if(fsReady()) db.collection('players').doc(id).del
 function persistMatch(m){ if(fsReady()) db.collection('matches').doc(m.id).set(m).catch(e=>cloudFail(e)); }
 function persistComments(m){ if(fsReady()) db.collection('matches').doc(m.id).update({ comments: m.comments || [] }).catch(e=>cloudFail(e)); }
 function removeMatchDoc(id){ if(fsReady()) db.collection('matches').doc(id).delete().catch(e=>cloudFail(e)); }
-function cloudFail(e){ cloudState = { status:'error', message:'Error: ' + (e && e.message ? e.message : e) }; renderCloudStatus(); }
+function cloudFail(e){ try{ console.error('Firestore error:', e && e.message ? e.message : e); }catch(_){} cloudState = { status:'error', message:'Error: ' + (e && e.message ? e.message : e) }; renderCloudStatus(); }
 
 /* ---------- Sesión de administrador (Google) ---------- */
 function adminLogin(){
@@ -1885,7 +1886,16 @@ function todayStr(){
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
-function autoCloseOldMatches(){ /* autocierre desactivado: el partido se cierra solo con "Finalizar partido" */ }
+function autoCloseOldMatches(){
+  // autocierre desactivado. Auto-reparacion: si un partido fue reabierto a mano (keepOpen) y quedo cerrado, lo reabre.
+  if(DEMO || !isAdmin) return;
+  let changed = false;
+  data.matches.forEach(m=>{
+    if(!m || !m.closed || !m.keepOpen) return;
+    m.closed = false; persistMatch(m); changed = true;
+  });
+  if(changed) save();
+}
 function addPlayer(){
   const name = $('#p-name').value.trim();
   if(!name){ alert('Poné al menos el nombre.'); return; }
