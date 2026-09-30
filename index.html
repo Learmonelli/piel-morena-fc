@@ -445,7 +445,7 @@
       </svg>
       <div>
         <h1>Piel Morena FC</h1>
-        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v70</span></p>
+        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v71</span></p>
       </div>
     </div>
     <div class="header-btns">
@@ -1885,17 +1885,17 @@ function todayStr(){
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
-const AUTOCLOSE_MS = 24 * 60 * 60 * 1000; // se cierra solo 24 horas después de creado
+const AUTOCLOSE_HOUR = 23; // el partido se cierra solo el día siguiente a las 23:00
 function autoCloseOldMatches(){
   if(DEMO) return;
-  const now = Date.now();
+  const now = new Date();
   let changed = false;
   data.matches.forEach(m=>{
-    if(!m || m.closed) return;
-    let created = m.createdAt;
-    if(!created && m.date) created = new Date(m.date + 'T00:00:00').getTime();
-    if(!created) return;
-    if(now - created >= AUTOCLOSE_MS){ m.closed = true; persistMatch(m); changed = true; }
+    if(!m || m.closed || !m.date) return;
+    const closeAt = new Date(m.date + 'T00:00:00');
+    closeAt.setDate(closeAt.getDate() + 1);
+    closeAt.setHours(AUTOCLOSE_HOUR, 0, 0, 0);
+    if(now >= closeAt){ m.closed = true; persistMatch(m); changed = true; }
   });
   if(changed) save();
 }
