@@ -445,7 +445,7 @@
       </svg>
       <div>
         <h1>Piel Morena FC</h1>
-        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v68</span></p>
+        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v69</span></p>
       </div>
     </div>
     <div class="header-btns">
@@ -864,7 +864,7 @@ function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;'
 function $(s){ return document.querySelector(s); }
 function fmtDate(d){ if(!d) return 'Sin fecha'; const [y,m,day]=d.split('-'); return `${day}/${m}/${y}`; }
 function getPlayer(id){ return data.players.find(p=>p.id===id); }
-function pname(id){ const p=getPlayer(id); return p ? (p.nickname || p.name) : '—'; }
+function pname(id){ const p=getPlayer(id); return p ? (p.name || p.nickname) : '—'; }
 function pfull(id){
   const p = getPlayer(id); if(!p) return '—';
   return (p.name || p.nickname || '—');
