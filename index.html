@@ -445,7 +445,7 @@
       </svg>
       <div>
         <h1>Piel Morena FC</h1>
-        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v75</span></p>
+        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v76</span></p>
       </div>
     </div>
     <div class="header-btns">
@@ -1273,6 +1273,7 @@ function matchDetailHTML(){
     <div class="card">
       <h3>Goles (${m.events.length})</h3>
       ${goals}
+      ${canEdit ? `<p class="muted" style="margin:10px 0 0">Tocá <b>✎</b> en un gol para cambiar el goleador o la asistencia (la asistencia es opcional).</p>` : ''}
     </div>
 
     <div class="card">
