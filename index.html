@@ -445,7 +445,7 @@
       </svg>
       <div>
         <h1>Piel Morena FC</h1>
-        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v74</span></p>
+        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v75</span></p>
       </div>
     </div>
     <div class="header-btns">
@@ -1238,8 +1238,9 @@ function matchDetailHTML(){
   const goalItem = (ev, side) => {
     const scorer = ev.scorerId ? esc(pfull(ev.scorerId)) : 'Gol del rival';
     const as = ev.assistId ? ` <span class="as">(asist. ${esc(pfull(ev.assistId))})</span>` : '';
+    const edit = canEdit ? `<button class="icon-btn" data-action="edit-goal" data-side="${side}" data-id="${ev.id}" title="Editar gol y asistencia">✎</button>` : '';
     const del = canEdit ? `<button class="icon-btn" data-action="del-goal" data-id="${ev.id}">×</button>` : '';
-    return `<div class="goal-item goal-item-${side.toLowerCase()}"><span class="goal-main">${scorer}${as}</span>${del}</div>`;
+    return `<div class="goal-item goal-item-${side.toLowerCase()}"><span class="goal-main">${scorer}${as}</span>${edit}${del}</div>`;
   };
   const aEvs = m.events.filter(e=>e.side==='A');
   const bEvs = m.events.filter(e=>e.side!=='A');
@@ -1754,15 +1755,20 @@ function openNewMatch(){
   `);
 }
 
-function openAddGoal(side){
+function openAddGoal(side, evId){
   const m = data.matches.find(x=>x.id===currentMatchId); if(!m) return;
+  const ev = evId ? (m.events||[]).find(e=>e.id===evId) : null;
+  if(ev) side = ev.side;
   const roster = side==='A' ? m.teamA : m.teamB;
   const isRivalSide = m.mode==='rival' && side==='B';
   if(!isRivalSide && !roster.length){ alert('Primero asigná jugadores a ese equipo.'); return; }
-  const opts = roster.map(id=>`<option value="${id}">${esc(pname(id))}</option>`).join('');
+  const curScorer = ev ? (ev.scorerId || '') : '';
+  const curAssist = ev ? (ev.assistId || '') : '';
+  const opts = roster.map(id=>`<option value="${id}"${id===curScorer?' selected':''}>${esc(pfull(id))}</option>`).join('');
+  const aopts = roster.map(id=>`<option value="${id}"${id===curAssist?' selected':''}>${esc(pfull(id))}</option>`).join('');
   const sideName = side==='A' ? m.teamAName : m.teamBName;
   openModal(`
-    <h3>Gol de ${esc(sideName)}</h3>
+    <h3>${ev?'Editar gol':'Gol'} de ${esc(sideName)}</h3>
     <label>Goleador ${isRivalSide?'<span class="hint">(rival)</span>':''}
       <select id="g-scorer">
         ${isRivalSide?'<option value="">Gol del rival (sin jugador)</option>':''}
@@ -1770,12 +1776,13 @@ function openAddGoal(side){
       </select>
     </label>
     ${isRivalSide ? '' : `<label>Asistencia <span class="hint">(opcional)</span>
-      <select id="g-assist"><option value="">Sin asistencia</option>${opts}</select>
+      <select id="g-assist"><option value="">Sin asistencia</option>${aopts}</select>
     </label>`}
     <input type="hidden" id="g-side" value="${side}">
+    <input type="hidden" id="g-id" value="${ev?ev.id:''}">
     <div class="modal-actions">
       <button class="btn ghost" data-action="modal-close">Cancelar</button>
-      <button class="btn primary" data-action="confirm-goal">Guardar gol</button>
+      <button class="btn primary" data-action="confirm-goal">${ev?'Guardar cambios':'Guardar gol'}</button>
     </div>
   `);
 }
@@ -1859,8 +1866,12 @@ function confirmGoal(){
   const assistEl = $('#g-assist');
   let assistId = assistEl ? (assistEl.value || null) : null;
   if(assistId === scorerId) assistId = null;
-  m.events.push({ id: uid(), side, scorerId, assistId });
-  sfx('goal'); save(); persistMatch(m); closeModal(); render();
+  const gidEl = document.getElementById('g-id');
+  const gid = gidEl ? gidEl.value : '';
+  const ev = gid ? (m.events||[]).find(e=>e.id===gid) : null;
+  if(ev){ ev.side = side; ev.scorerId = scorerId; ev.assistId = assistId; }
+  else { m.events.push({ id: uid(), side, scorerId, assistId }); sfx('goal'); }
+  save(); persistMatch(m); closeModal(); render();
 }
 function delGoal(id){
   const m = data.matches.find(x=>x.id===currentMatchId); if(!canEditMatch(m)) return;
@@ -2205,6 +2216,7 @@ document.addEventListener('click', e=>{
     case 'del-comment': delComment(id); break;
     case 'rank-cat': rankCat = t.dataset.cat; render(); break;
     case 'add-goal': openAddGoal(t.dataset.side); break;
+    case 'edit-goal': openAddGoal(t.dataset.side, t.dataset.id); break;
     case 'confirm-goal': confirmGoal(); break;
     case 'del-goal': delGoal(id); break;
     case 'delete-match': deleteMatch(id); break;
