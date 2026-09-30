@@ -445,7 +445,7 @@
       </svg>
       <div>
         <h1>Piel Morena FC</h1>
-        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v71</span></p>
+        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v72</span></p>
       </div>
     </div>
     <div class="header-btns">
@@ -1874,12 +1874,12 @@ function deleteMatch(id){
 function closeMatch(id){
   const m = data.matches.find(x=>x.id===id); if(!m) return;
   if(!confirm('¿Finalizar el partido? Quedará bloqueado y no se podrán cambiar sus datos.')) return;
-  m.closed = true; save(); persistMatch(m); render();
+  m.closed = true; delete m.keepOpen; save(); persistMatch(m); render();
 }
 function reopenMatch(id){
   if(!isAdmin && !DEMO){ alert('Solo el administrador puede reabrir un partido.'); return; }
   const m = data.matches.find(x=>x.id===id); if(!m) return;
-  m.closed = false; save(); persistMatch(m); render();
+  m.closed = false; m.keepOpen = true; save(); persistMatch(m); render();
 }
 function todayStr(){
   const d = new Date();
@@ -1891,7 +1891,7 @@ function autoCloseOldMatches(){
   const now = new Date();
   let changed = false;
   data.matches.forEach(m=>{
-    if(!m || m.closed || !m.date) return;
+    if(!m || m.closed || m.keepOpen || !m.date) return;
     const closeAt = new Date(m.date + 'T00:00:00');
     closeAt.setDate(closeAt.getDate() + 1);
     closeAt.setHours(AUTOCLOSE_HOUR, 0, 0, 0);
