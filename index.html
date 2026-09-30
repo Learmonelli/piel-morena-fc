@@ -445,7 +445,7 @@
       </svg>
       <div>
         <h1>Piel Morena FC</h1>
-        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v72</span></p>
+        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v73</span></p>
       </div>
     </div>
     <div class="header-btns">
@@ -1885,20 +1885,7 @@ function todayStr(){
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
-const AUTOCLOSE_HOUR = 23; // el partido se cierra solo el día siguiente a las 23:00
-function autoCloseOldMatches(){
-  if(DEMO) return;
-  const now = new Date();
-  let changed = false;
-  data.matches.forEach(m=>{
-    if(!m || m.closed || m.keepOpen || !m.date) return;
-    const closeAt = new Date(m.date + 'T00:00:00');
-    closeAt.setDate(closeAt.getDate() + 1);
-    closeAt.setHours(AUTOCLOSE_HOUR, 0, 0, 0);
-    if(now >= closeAt){ m.closed = true; persistMatch(m); changed = true; }
-  });
-  if(changed) save();
-}
+function autoCloseOldMatches(){ /* autocierre desactivado: el partido se cierra solo con "Finalizar partido" */ }
 function addPlayer(){
   const name = $('#p-name').value.trim();
   if(!name){ alert('Poné al menos el nombre.'); return; }
