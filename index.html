@@ -272,6 +272,10 @@
   .guest-add input{flex:1;margin-top:0}
   .esc-val{min-width:24px;text-align:center;font-weight:800;font-size:17px;color:var(--gold)}
   .escabio-total{display:flex;align-items:baseline;gap:8px;margin:4px 0 4px}
+  .esc-total-edit{align-items:center;gap:10px}
+  .esc-total-input{width:84px;height:48px;text-align:center;font-family:var(--font-body);
+    font-size:30px;font-weight:800;color:var(--gold);background:transparent;
+    border:2px solid var(--line);border-radius:10px;padding:0 4px;margin:0}
   .name-line{display:flex;align-items:center;gap:8px;margin-top:6px}
   .name-line input{margin-top:0;flex:1}
   .name-face{flex:0 0 auto;display:flex}
@@ -441,7 +445,7 @@
       </svg>
       <div>
         <h1>Piel Morena FC</h1>
-        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v66</span></p>
+        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v68</span></p>
       </div>
     </div>
     <div class="header-btns">
@@ -863,9 +867,7 @@ function getPlayer(id){ return data.players.find(p=>p.id===id); }
 function pname(id){ const p=getPlayer(id); return p ? (p.nickname || p.name) : '—'; }
 function pfull(id){
   const p = getPlayer(id); if(!p) return '—';
-  const n = (p.name||'').trim(), nk = (p.nickname||'').trim();
-  if(n && nk && nk.toLowerCase() !== n.toLowerCase()) return `${n} (${nk})`;
-  return n || nk || '—';
+  return (p.name || p.nickname || '—');
 }
 function invBadge(p){ return p && p.guest ? ' <span class="pill">invitado</span>' : ''; }
 function scoreOf(m,side){ return (m.events||[]).filter(e=>e.side===side).length; }
@@ -887,7 +889,7 @@ function migMap(map){
 }
 function escQty(m, id){ return qtyOf(m.escabio, id); }
 function migEsc(m){ return migMap(m.escabio); }
-function escTotal(m){ return totalOf(m.escabio); }
+function escTotal(m){ return (m && m.escabioTotal != null) ? (Number(m.escabioTotal) || 0) : totalOf(m.escabio); }
 
 /* ---------- Avatar pixel art (16-bit) ---------- */
 function hashStr(s){
@@ -1164,19 +1166,6 @@ function escabioPostHTML(){
   const locked = !canEditMatch(m);
   const opts = ms.map(x=>`<option value="${x.id}" ${x.id===m.id?'selected':''}>${fmtDate(x.date)} · ${esc(x.teamAName)} vs ${esc(x.teamBName)}</option>`).join('');
 
-  const played = [...(m.teamA||[]), ...(m.teamB||[])].filter(id=>getPlayer(id));
-  const escRows = played.map(id=>{
-    const q = escQty(m, id);
-    return `<div class="assign-row">
-      <span class="pname">${playerAvatar(getPlayer(id),26)}<span class="nm-txt">${esc(pfull(id))}</span></span>
-      <div class="esc-ctrl">
-        <button class="icon-btn" data-action="esc-dec" data-id="${id}"${locked?' disabled':''}>−</button>
-        <span class="esc-val">${q}</span>
-        <button class="icon-btn" data-action="esc-inc" data-id="${id}"${locked?' disabled':''}>+</button>
-      </div>
-    </div>`;
-  }).join('') || '<p class="muted">Ese partido no tiene jugadores asignados.</p>';
-
   const cs = m.comments || [];
   const comments = cs.length ? cs.map(c=>`<div class="comment">
       <div class="comment-head">${faceForName(c.author,26)}<b>${esc(c.author||'Anónimo')}</b>
@@ -1188,9 +1177,12 @@ function escabioPostHTML(){
   return `<div class="card">
     <h3>Post-partido</h3>
     <label>Partido<select id="esc-match">${opts}</select></label>
-    <div class="escabio-total"><span class="esc-val" style="font-size:30px;min-width:0">${escTotal(m)}</span> <span class="muted">🍾 escabio del equipo</span></div>
-    <h3 style="margin-top:12px">🍾 Escabio (birras) <span class="hint">· tocá − / +</span></h3>
-    ${escRows}
+    <h3 style="margin-top:14px">🍾 Escabio (birras) <span class="hint">· total del equipo</span></h3>
+    <div class="escabio-total esc-total-edit">
+      <button class="icon-btn" data-action="esc-total-dec"${locked?' disabled':''}>−</button>
+      <input id="esc-total" class="esc-total-input" type="number" inputmode="numeric" min="0" value="${escTotal(m)}"${locked?' disabled':''}>
+      <button class="icon-btn" data-action="esc-total-inc"${locked?' disabled':''}>+</button>
+    </div>
     <h3 style="margin-top:16px">Comentarios <span class="hint">· ${cs.length}</span></h3>
     <div class="comment-list">${comments}</div>
     ${locked ? `<p class="muted" style="text-align:center">🔒 Partido finalizado: solo se pueden agregar comentarios.</p>` : ''}
@@ -1222,7 +1214,7 @@ function matchDetailHTML(){
         <button class="award-btn ${m.polemicaId===p.id?'on':''}" data-action="aw" data-id="${p.id}" data-cat="polemica"${dis} title="Polémica">📣</button>
       </div>` : '';
     return `<div class="assign-row">
-      <span class="pname">${playerAvatar(p,30)}${p.number?`<span class="num">${esc(p.number)}</span>`:''}<span class="nm-txt">${esc(pname(p.id))}</span>${invBadge(p)}</span>
+      <span class="pname">${playerAvatar(p,30)}${p.number?`<span class="num">${esc(p.number)}</span>`:''}<span class="nm-txt">${esc(pfull(p.id))}</span>${invBadge(p)}</span>
       <div class="row-actions">${awardBtns}
         <div class="side-btns">
           <button class="sidebtn ${inA?'on':''}" data-action="toggle-team" data-id="${p.id}" data-side="A"${dis}>${isRival?'Juega':'A'}</button>
@@ -1832,6 +1824,11 @@ function escAdjust(pid, delta){
   if(q === 0) delete m.escabio[pid]; else m.escabio[pid] = q;
   save(); persistMatch(m); render();
 }
+function escTotalAdjust(delta){
+  const m = data.matches.find(x=>x.id===escabioMatchId); if(!canEditMatch(m)) return;
+  m.escabioTotal = Math.max(0, escTotal(m) + delta);
+  save(); persistMatch(m); render();
+}
 function addComment(){
   const m = data.matches.find(x=>x.id===escabioMatchId); if(!m) return;
   const nameEl = document.getElementById('c-name');
@@ -2195,6 +2192,8 @@ document.addEventListener('click', e=>{
     case 'clear-teams': clearTeams(); break;
     case 'esc-inc': escAdjust(id, 1); break;
     case 'esc-dec': escAdjust(id, -1); break;
+    case 'esc-total-inc': escTotalAdjust(1); break;
+    case 'esc-total-dec': escTotalAdjust(-1); break;
     case 'add-comment': addComment(); break;
     case 'del-comment': delComment(id); break;
     case 'rank-cat': rankCat = t.dataset.cat; render(); break;
@@ -2226,6 +2225,11 @@ document.addEventListener('change', e=>{
     if(w) w.style.display = e.target.value==='rival' ? 'block' : 'none';
   }
   if(e.target.id==='esc-match'){ escabioMatchId = e.target.value; render(); }
+  if(e.target.id==='esc-total'){
+    const m = data.matches.find(x=>x.id===escabioMatchId); if(!canEditMatch(m)) return;
+    m.escabioTotal = Math.max(0, parseInt(e.target.value, 10) || 0);
+    save(); persistMatch(m); render();
+  }
 });
 document.addEventListener('input', e=>{
   if(e.target.id==='c-name'){
