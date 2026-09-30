@@ -445,7 +445,7 @@
       </svg>
       <div>
         <h1>Piel Morena FC</h1>
-        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v69</span></p>
+        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v70</span></p>
       </div>
     </div>
     <div class="header-btns">
@@ -1203,7 +1203,11 @@ function matchDetailHTML(){
   const canEdit = canEditMatch(m);
   const dis = canEdit ? '' : ' disabled';
 
-  const assign = data.players.length ? data.players.map(p=>{
+  const assign = data.players.length ? data.players.slice().sort((a,b)=>{
+    const an = (m.teamA.includes(a.id)||m.teamB.includes(a.id)) ? 0 : 1;
+    const bn = (m.teamA.includes(b.id)||m.teamB.includes(b.id)) ? 0 : 1;
+    return an - bn;
+  }).map(p=>{
     const inA=m.teamA.includes(p.id), inB=m.teamB.includes(p.id);
     const bBtn = isRival ? '' :
       `<button class="sidebtn ${inB?'on':''}" data-action="toggle-team" data-id="${p.id}" data-side="B"${dis}>B</button>`;
@@ -1782,6 +1786,7 @@ function createMatch(){
   const rival = mode==='rival' ? ($('#m-rival').value.trim() || 'Rival') : '';
   const m = {
     id: uid(), date, mode,
+    createdAt: Date.now(),
     teamAName: mode==='rival' ? 'Piel Morena' : 'Equipo A',
     teamBName: mode==='rival' ? rival : 'Equipo B',
     rivalName: rival,
@@ -1880,12 +1885,17 @@ function todayStr(){
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
+const AUTOCLOSE_MS = 24 * 60 * 60 * 1000; // se cierra solo 24 horas después de creado
 function autoCloseOldMatches(){
   if(DEMO) return;
-  const today = todayStr();
+  const now = Date.now();
   let changed = false;
   data.matches.forEach(m=>{
-    if(m && !m.closed && m.date && m.date < today){ m.closed = true; persistMatch(m); changed = true; }
+    if(!m || m.closed) return;
+    let created = m.createdAt;
+    if(!created && m.date) created = new Date(m.date + 'T00:00:00').getTime();
+    if(!created) return;
+    if(now - created >= AUTOCLOSE_MS){ m.closed = true; persistMatch(m); changed = true; }
   });
   if(changed) save();
 }
