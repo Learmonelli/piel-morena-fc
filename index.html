@@ -209,6 +209,16 @@
     padding:3px 8px;border-radius:7px;white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis}
   .goal-main{flex:1;font-size:14px}
   .goal-main .as{color:var(--muted);font-size:12px}
+  .goals-cols{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}
+  .goals-col{min-width:0}
+  .goals-col-head{font-size:12px;font-weight:800;color:var(--gold);margin-bottom:4px;
+    padding-bottom:4px;border-bottom:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .goals-col-b .goals-col-head{text-align:right}
+  .goal-item{display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid rgba(74,33,48,.45)}
+  .goal-item:last-child{border-bottom:0}
+  .goal-item-b{flex-direction:row-reverse}
+  .goal-item .goal-main{flex:1;min-width:0}
+  .goal-item-b .goal-main{text-align:right}
 
   /* Table */
   .table{width:100%;border-collapse:collapse;font-size:13px}
@@ -851,6 +861,12 @@ function $(s){ return document.querySelector(s); }
 function fmtDate(d){ if(!d) return 'Sin fecha'; const [y,m,day]=d.split('-'); return `${day}/${m}/${y}`; }
 function getPlayer(id){ return data.players.find(p=>p.id===id); }
 function pname(id){ const p=getPlayer(id); return p ? (p.nickname || p.name) : '—'; }
+function pfull(id){
+  const p = getPlayer(id); if(!p) return '—';
+  const n = (p.name||'').trim(), nk = (p.nickname||'').trim();
+  if(n && nk && nk.toLowerCase() !== n.toLowerCase()) return `${n} (${nk})`;
+  return n || nk || '—';
+}
 function invBadge(p){ return p && p.guest ? ' <span class="pill">invitado</span>' : ''; }
 function scoreOf(m,side){ return (m.events||[]).filter(e=>e.side===side).length; }
 function qtyOf(map, id){
@@ -1148,6 +1164,19 @@ function escabioPostHTML(){
   const locked = !canEditMatch(m);
   const opts = ms.map(x=>`<option value="${x.id}" ${x.id===m.id?'selected':''}>${fmtDate(x.date)} · ${esc(x.teamAName)} vs ${esc(x.teamBName)}</option>`).join('');
 
+  const played = [...(m.teamA||[]), ...(m.teamB||[])].filter(id=>getPlayer(id));
+  const escRows = played.map(id=>{
+    const q = escQty(m, id);
+    return `<div class="assign-row">
+      <span class="pname">${playerAvatar(getPlayer(id),26)}<span class="nm-txt">${esc(pfull(id))}</span></span>
+      <div class="esc-ctrl">
+        <button class="icon-btn" data-action="esc-dec" data-id="${id}"${locked?' disabled':''}>−</button>
+        <span class="esc-val">${q}</span>
+        <button class="icon-btn" data-action="esc-inc" data-id="${id}"${locked?' disabled':''}>+</button>
+      </div>
+    </div>`;
+  }).join('') || '<p class="muted">Ese partido no tiene jugadores asignados.</p>';
+
   const cs = m.comments || [];
   const comments = cs.length ? cs.map(c=>`<div class="comment">
       <div class="comment-head">${faceForName(c.author,26)}<b>${esc(c.author||'Anónimo')}</b>
@@ -1160,6 +1189,8 @@ function escabioPostHTML(){
     <h3>Post-partido</h3>
     <label>Partido<select id="esc-match">${opts}</select></label>
     <div class="escabio-total"><span class="esc-val" style="font-size:30px;min-width:0">${escTotal(m)}</span> <span class="muted">🍾 escabio del equipo</span></div>
+    <h3 style="margin-top:12px">🍾 Escabio (birras) <span class="hint">· tocá − / +</span></h3>
+    ${escRows}
     <h3 style="margin-top:16px">Comentarios <span class="hint">· ${cs.length}</span></h3>
     <div class="comment-list">${comments}</div>
     ${locked ? `<p class="muted" style="text-align:center">🔒 Partido finalizado: solo se pueden agregar comentarios.</p>` : ''}
@@ -1207,16 +1238,24 @@ function matchDetailHTML(){
       ${isRival?'':`<button class="btn ghost sm" data-action="add-guest" data-side="B">+ B</button>`}
     </div>`;
 
-  const goals = m.events.length ? m.events.map(ev=>{
-    const sideName = ev.side==='A' ? m.teamAName : m.teamBName;
-    const scorer = ev.scorerId ? esc(pname(ev.scorerId)) : 'Gol del rival';
-    const as = ev.assistId ? ` <span class="as">(asist. ${esc(pname(ev.assistId))})</span>` : '';
-    return `<div class="goal-row">
-      <span class="goal-side">${esc(sideName)}</span>
-      <span class="goal-main">${scorer}${as}</span>
-      ${canEdit ? `<button class="icon-btn" data-action="del-goal" data-id="${ev.id}">×</button>` : ''}
-    </div>`;
-  }).join('') : '<p class="muted">Sin goles registrados.</p>';
+  const goalItem = (ev, side) => {
+    const scorer = ev.scorerId ? esc(pfull(ev.scorerId)) : 'Gol del rival';
+    const as = ev.assistId ? ` <span class="as">(asist. ${esc(pfull(ev.assistId))})</span>` : '';
+    const del = canEdit ? `<button class="icon-btn" data-action="del-goal" data-id="${ev.id}">×</button>` : '';
+    return `<div class="goal-item goal-item-${side.toLowerCase()}"><span class="goal-main">${scorer}${as}</span>${del}</div>`;
+  };
+  const aEvs = m.events.filter(e=>e.side==='A');
+  const bEvs = m.events.filter(e=>e.side!=='A');
+  const goals = m.events.length ? `<div class="goals-cols">
+    <div class="goals-col">
+      <div class="goals-col-head">${esc(m.teamAName)} · ${aEvs.length}</div>
+      ${aEvs.length ? aEvs.map(e=>goalItem(e,'A')).join('') : '<p class="muted">—</p>'}
+    </div>
+    <div class="goals-col goals-col-b">
+      <div class="goals-col-head">${bEvs.length} · ${esc(m.teamBName)}</div>
+      ${bEvs.length ? bEvs.map(e=>goalItem(e,'B')).join('') : '<p class="muted">—</p>'}
+    </div>
+  </div>` : '<p class="muted">Sin goles registrados.</p>';
 
   return `
     <button class="btn ghost sm" data-action="back" style="margin-bottom:14px">← Volver</button>
