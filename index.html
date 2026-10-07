@@ -113,6 +113,8 @@
   .tag.mvp{background:rgba(106,44,145,.28);color:#d9b6ef}
   .tag.hachazo{background:rgba(229,72,77,.2);color:#ff9a9d}
   .tag.polemica{background:rgba(242,183,5,.18);color:var(--gold)}
+  .tag.golazo{background:rgba(255,120,40,.2);color:#ffb27a}
+  .tag.muro{background:rgba(150,160,175,.22);color:#cdd6e0}
   .tag.gk{background:rgba(31,155,209,.22);color:#9fd8f5}
   .tags{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
   .match-title{font-size:15px;font-weight:700;margin-bottom:10px}
@@ -252,6 +254,9 @@
   .podium-item .pod-hachazos{top:42px;left:calc(50% - 32px);transform:rotate(18deg);font-size:24px}
   .podium-item .pod-polemicas{top:42px;left:calc(50% + 7px);transform:rotate(42deg);font-size:20px;
     filter:hue-rotate(-55deg) saturate(1.8) drop-shadow(0 2px 2px rgba(0,0,0,.55))}
+  .podium-item .pod-golazos{top:42px;left:calc(50% - 32px);transform:rotate(18deg);font-size:24px}
+  .podium-item .pod-muros{top:42px;left:calc(50% + 7px);transform:rotate(42deg);font-size:20px;
+    filter:grayscale(.2) brightness(1.15) drop-shadow(0 2px 2px rgba(0,0,0,.55))}
   .podium-name{display:block;font-size:12px;font-weight:700;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .podium-val{display:block;font-size:22px;font-weight:800;color:var(--gold);line-height:1.1}
   .podium-cat{display:block;font-size:9px;text-transform:uppercase;color:var(--muted);letter-spacing:.4px}
@@ -445,7 +450,7 @@
       </svg>
       <div>
         <h1>Piel Morena FC</h1>
-        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v76</span></p>
+        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v77</span></p>
       </div>
     </div>
     <div class="header-btns">
@@ -484,7 +489,10 @@ function canEditMatch(m){ return !!m && (!m.closed || isAdmin || DEMO); }
 function load(){
   try{
     const r = JSON.parse(localStorage.getItem(KEY));
-    if(r && Array.isArray(r.players) && Array.isArray(r.matches)) return r;
+    if(r && Array.isArray(r.players) && Array.isArray(r.matches)){
+      r.matches.forEach(m=>migrateAssists(m));
+      return r;
+    }
   }catch(e){}
   return { players:[], matches:[] };
 }
@@ -544,7 +552,7 @@ function demoSeed(){
     const date = d.toISOString().slice(0,10);
     const isRival = (i % 3 === 2);
     const m = { id:'demo_m'+i, date, mode: isRival?'rival':'interno', teamA:[], teamB:[], events:[],
-                mvpId:null, gkId:null, hachazoId:null, polemicaId:null, escabio:{}, comments:[] };
+                assists:{}, mvpId:null, gkId:null, golazoId:null, muroId:null, hachazoId:null, polemicaId:null, escabio:{}, comments:[] };
     const pool = shuffled(players.filter(p=>!p.guest).map(p=>p.id)).slice(0, isRival?10:12);
     if(isRival){
       m.teamAName = 'Fulbito FC';
@@ -562,21 +570,21 @@ function demoSeed(){
     const totalGoals = 2 + ri(6);
     for(let g=0; g<totalGoals; g++){
       if(isRival && rnd() < 0.5){
-        m.events.push({ id:'demo_m'+i+'_e'+g, side:'B', scorerId:'', assistId:'' });
+        m.events.push({ id:'demo_m'+i+'_e'+g, side:'B', scorerId:'' });
       } else {
         const rosterSide = (isRival || rnd() < 0.5) ? m.teamA : m.teamB;
         const side = rosterSide === m.teamA ? 'A' : 'B';
         const scorerId = pick(rosterSide);
         const others = rosterSide.filter(x=>x!==scorerId);
-        const assistId = (others.length && rnd()<0.55) ? pick(others) : '';
-        m.events.push({ id:'demo_m'+i+'_e'+g, side, scorerId, assistId });
+        if(others.length && rnd()<0.55){ const aid = pick(others); m.assists[aid] = (Number(m.assists[aid])||0) + 1; }
+        m.events.push({ id:'demo_m'+i+'_e'+g, side, scorerId });
       }
     }
     const scorers = m.events.filter(e=>e.scorerId).map(e=>e.scorerId);
     m.mvpId = scorers.length ? pick(scorers) : pick(m.teamA);
     const gks = all.filter(id=>{ const p = players.find(x=>x.id===id); return p && p.positions.includes('PO'); });
     if(gks.length) m.gkId = pick(gks);
-    if(all.length){ m.hachazoId = pick(all); m.polemicaId = pick(all); }
+    if(all.length){ m.golazoId = pick(all); m.muroId = pick(all); m.hachazoId = pick(all); m.polemicaId = pick(all); }
     all.forEach(id=>{ const q = ri(3); if(q>0) m.escabio[id] = q; });
     const nc = ri(3);
     for(let c=0;c<nc;c++){ const [author,text] = pick(commentsPool); m.comments.push({ id:'demo_m'+i+'_c'+c, author, text, ts: d.getTime() + (c+1)*3600000 }); }
@@ -692,6 +700,7 @@ async function initCloud(){
   cloudStarting = false;
 }
 function afterSnapshot(){
+  (data.matches||[]).forEach(m=>{ if(migrateAssists(m) && (!m.closed || isAdmin || DEMO)) persistMatch(m); });
   localStorage.setItem(KEY, JSON.stringify(data));
   autoCloseOldMatches();
   if(cloudState.status !== 'error') cloudState = { status:'ok', message:'Sincronizado en tiempo real.' };
@@ -891,6 +900,34 @@ function migMap(map){
 function escQty(m, id){ return qtyOf(m.escabio, id); }
 function migEsc(m){ return migMap(m.escabio); }
 function escTotal(m){ return (m && m.escabioTotal != null) ? (Number(m.escabioTotal) || 0) : totalOf(m.escabio); }
+
+/* ---------- Asistencias (se guardan aparte del gol) ---------- */
+function migAssists(m){ return migMap(m && m.assists); }
+function assistQty(m, id){
+  if(!m) return 0;
+  let n = qtyOf(m.assists, id);
+  (m.events||[]).forEach(ev=>{ if(ev.assistId===id) n++; });
+  return n;
+}
+function assistTotal(m){
+  if(!m) return 0;
+  let n = totalOf(m.assists);
+  (m.events||[]).forEach(ev=>{ if(ev.assistId) n++; });
+  return n;
+}
+function migrateAssists(m){
+  if(!m || !Array.isArray(m.events)) return false;
+  if(!m.assists || Array.isArray(m.assists)) m.assists = migAssists(m);
+  let changed = false;
+  m.events.forEach(ev=>{
+    if(ev.assistId){
+      m.assists[ev.assistId] = (Number(m.assists[ev.assistId]) || 0) + 1;
+      delete ev.assistId;
+      changed = true;
+    }
+  });
+  return changed;
+}
 
 /* ---------- Avatar pixel art (16-bit) ---------- */
 function hashStr(s){
@@ -1146,12 +1183,15 @@ function partidosHTML(){
     const title = m.rivalName ? `${esc(m.teamAName)} vs ${esc(m.rivalName)}`
                               : `${esc(m.teamAName)} vs ${esc(m.teamBName)}`;
     const _aM = awardId(m,'mvp'), _aG = awardId(m,'gk'), _aH = awardId(m,'hachazo'), _aP = awardId(m,'polemica');
+    const _aGo = awardId(m,'golazo'), _aMu = awardId(m,'muro');
     const mvp = _aM ? `<span class="tag mvp">👑 Figura: ${esc(pname(_aM))}</span>` : '';
     const gk = _aG ? `<span class="tag gk">🧤 Arquero: ${esc(pname(_aG))}</span>` : '';
+    const golazo = _aGo ? `<span class="tag golazo">🔥 Golazo: ${esc(pname(_aGo))}</span>` : '';
+    const muro = _aMu ? `<span class="tag muro">🧱 Muro: ${esc(pname(_aMu))}</span>` : '';
     const hach = _aH ? `<span class="tag hachazo">🪓 Hachazo: ${esc(pname(_aH))}</span>` : '';
     const pol = _aP ? `<span class="tag polemica">📣 Polémica: ${esc(pname(_aP))}</span>` : '';
     return `<article class="card match-card" data-action="open-match" data-id="${m.id}">
-      <div class="match-top"><span class="date">${fmtDate(m.date)}</span><span class="tags">${m.closed?'<span class="tag">🔒</span>':''}${mvp}${gk}${hach}${pol}</span></div>
+      <div class="match-top"><span class="date">${fmtDate(m.date)}</span><span class="tags">${m.closed?'<span class="tag">🔒</span>':''}${mvp}${gk}${golazo}${muro}${hach}${pol}</span></div>
       <div class="match-title">${title}</div>
       <div class="score"><b>${a}</b><span>-</span><b>${b}</b></div>
     </article>`;
@@ -1215,6 +1255,8 @@ function matchDetailHTML(){
     const awardBtns = (inA||inB) ? `<div class="award-btns">
         <button class="award-btn ${m.mvpId===p.id?'on':''}" data-action="aw" data-id="${p.id}" data-cat="mvp"${dis} title="Figura">👑</button>
         <button class="award-btn ${m.gkId===p.id?'on':''}" data-action="aw" data-id="${p.id}" data-cat="gk"${dis} title="Mejor arquero">🧤</button>
+        <button class="award-btn ${m.golazoId===p.id?'on':''}" data-action="aw" data-id="${p.id}" data-cat="golazo"${dis} title="Golazo Piel Morena">🔥</button>
+        <button class="award-btn ${m.muroId===p.id?'on':''}" data-action="aw" data-id="${p.id}" data-cat="muro"${dis} title="Muro (mejor defensor)">🧱</button>
         <button class="award-btn ${m.hachazoId===p.id?'on':''}" data-action="aw" data-id="${p.id}" data-cat="hachazo"${dis} title="Hachazo">🪓</button>
         <button class="award-btn ${m.polemicaId===p.id?'on':''}" data-action="aw" data-id="${p.id}" data-cat="polemica"${dis} title="Polémica">📣</button>
       </div>` : '';
@@ -1237,10 +1279,9 @@ function matchDetailHTML(){
 
   const goalItem = (ev, side) => {
     const scorer = ev.scorerId ? esc(pfull(ev.scorerId)) : 'Gol del rival';
-    const as = ev.assistId ? ` <span class="as">(asist. ${esc(pfull(ev.assistId))})</span>` : '';
-    const edit = canEdit ? `<button class="icon-btn" data-action="edit-goal" data-side="${side}" data-id="${ev.id}" title="Editar gol y asistencia">✎</button>` : '';
+    const edit = canEdit ? `<button class="icon-btn" data-action="edit-goal" data-side="${side}" data-id="${ev.id}" title="Editar goleador (la asistencia va aparte)">✎</button>` : '';
     const del = canEdit ? `<button class="icon-btn" data-action="del-goal" data-id="${ev.id}">×</button>` : '';
-    return `<div class="goal-item goal-item-${side.toLowerCase()}"><span class="goal-main">${scorer}${as}</span>${edit}${del}</div>`;
+    return `<div class="goal-item goal-item-${side.toLowerCase()}"><span class="goal-main">${scorer}</span>${edit}${del}</div>`;
   };
   const aEvs = m.events.filter(e=>e.side==='A');
   const bEvs = m.events.filter(e=>e.side!=='A');
@@ -1254,6 +1295,25 @@ function matchDetailHTML(){
       ${bEvs.length ? bEvs.map(e=>goalItem(e,'B')).join('') : '<p class="muted">—</p>'}
     </div>
   </div>` : '<p class="muted">Sin goles registrados.</p>';
+
+  const assistPlayers = data.players.filter(p=> m.teamA.includes(p.id) || m.teamB.includes(p.id));
+  const assistsRows = assistPlayers.map(p=>{
+    const q = assistQty(m, p.id);
+    const team = m.teamA.includes(p.id) ? 'A' : 'B';
+    return `<div class="assign-row">
+      <span class="pname">${playerAvatar(p,28)}<span class="nm-txt">${esc(pfull(p.id))}</span> <span class="pill">${team}</span></span>
+      <div class="esc-ctrl">
+        <button class="icon-btn" data-action="assist-dec" data-id="${p.id}"${dis}>−</button>
+        <span class="esc-val">${q}</span>
+        <button class="icon-btn" data-action="assist-inc" data-id="${p.id}"${dis}>+</button>
+      </div>
+    </div>`;
+  }).join('');
+  const assistsCard = `<div class="card">
+      <h3>🤝 Asistencias <span class="hint">· ${assistTotal(m)}</span></h3>
+      ${assistPlayers.length ? assistsRows : '<p class="muted">Primero asigná jugadores a los equipos.</p>'}
+      ${canEdit ? `<p class="muted" style="margin:10px 0 0">Se guardan <b>aparte del gol</b>: tocá <b>+</b> para acreditar una asistencia sin cargar el gol.</p>` : ''}
+    </div>`;
 
   return `
     <button class="btn ghost sm" data-action="back" style="margin-bottom:14px">← Volver</button>
@@ -1273,8 +1333,10 @@ function matchDetailHTML(){
     <div class="card">
       <h3>Goles (${m.events.length})</h3>
       ${goals}
-      ${canEdit ? `<p class="muted" style="margin:10px 0 0">Tocá <b>✎</b> en un gol para cambiar el goleador o la asistencia (la asistencia es opcional).</p>` : ''}
+      ${canEdit ? `<p class="muted" style="margin:10px 0 0">Tocá <b>✎</b> en un gol para cambiar el goleador. Las asistencias se cargan aparte, en la sección de abajo.</p>` : ''}
     </div>
+
+    ${assistsCard}
 
     <div class="card">
       <h3>${isRival?'Quiénes juegan':'Armar los equipos'}
@@ -1285,7 +1347,7 @@ function matchDetailHTML(){
       </div>
       <p class="muted" style="margin:0 0 10px">Marcá quiénes juegan con A o B y tocá <b>Sortear</b> para repartirlos al azar en partes iguales.</p>` : ''}
       ${canEdit ? guestAdd : ''}
-      ${canEdit ? `<p class="muted" style="margin:0 0 10px">Premios: tocá 👑 figura · 🧤 arquero · 🪓 hachazo · 📣 polémica al lado de cada jugador (podés darle varios a la vez).</p>` : ''}
+      ${canEdit ? `<p class="muted" style="margin:0 0 10px">Premios: tocá 👑 figura · 🧤 arquero · 🔥 golazo · 🧱 muro · 🪓 hachazo · 📣 polémica al lado de cada jugador (podés darle varios a la vez).</p>` : ''}
       ${assign}
     </div>
 
@@ -1297,11 +1359,11 @@ function matchDetailHTML(){
 
 /* ---------- Premios del partido (manuales: figura, arquero, hachazo, polémica) ---------- */
 function awardId(m, cat){
-  return { mvp:m.mvpId, gk:m.gkId, hachazo:m.hachazoId, polemica:m.polemicaId }[cat] || null;
+  return { mvp:m.mvpId, gk:m.gkId, golazo:m.golazoId, muro:m.muroId, hachazo:m.hachazoId, polemica:m.polemicaId }[cat] || null;
 }
 function toggleAward(pid, cat){
   const m = data.matches.find(x=>x.id===currentMatchId); if(!canEditMatch(m)) return;
-  const field = { mvp:'mvpId', gk:'gkId', hachazo:'hachazoId', polemica:'polemicaId' }[cat];
+  const field = { mvp:'mvpId', gk:'gkId', golazo:'golazoId', muro:'muroId', hachazo:'hachazoId', polemica:'polemicaId' }[cat];
   if(!field) return;
   if(m[field] === pid) m[field] = null;
   else { m[field] = pid; if(cat==='mvp') sfx('mvp'); }
@@ -1311,7 +1373,7 @@ function toggleAward(pid, cat){
 /* ---------- Estadísticas ---------- */
 function computeStats(){
   const st = {};
-  data.players.forEach(p=> st[p.id]={pj:0,goles:0,asist:0,mvp:0,gk:0,v:0,d:0,e:0,escabio:0,hachazos:0,polemicas:0,racha:0,rachaAct:0});
+  data.players.forEach(p=> st[p.id]={pj:0,goles:0,asist:0,mvp:0,gk:0,v:0,d:0,e:0,escabio:0,hachazos:0,polemicas:0,golazos:0,muros:0,racha:0,rachaAct:0});
   data.matches.forEach(m=>{
     const a = scoreOf(m,'A'), b = scoreOf(m,'B');
     const resA = a>b ? 'v' : a<b ? 'd' : 'e';
@@ -1320,13 +1382,18 @@ function computeStats(){
     (m.teamB||[]).forEach(id=>{ if(st[id]){ st[id].pj++; st[id][resB]++; } });
     (m.events||[]).forEach(ev=>{
       if(ev.scorerId && st[ev.scorerId]) st[ev.scorerId].goles++;
-      if(ev.assistId && st[ev.assistId]) st[ev.assistId].asist++;
     });
+    const asMap = migAssists(m);
+    (m.events||[]).forEach(ev=>{ if(ev.assistId) asMap[ev.assistId] = (Number(asMap[ev.assistId])||0) + 1; });
+    Object.keys(asMap).forEach(id=>{ if(st[id]) st[id].asist += Number(asMap[id]) || 0; });
     const _aM = awardId(m,'mvp'), _aG = awardId(m,'gk'), _aH = awardId(m,'hachazo'), _aP = awardId(m,'polemica');
+    const _aGo = awardId(m,'golazo'), _aMu = awardId(m,'muro');
     if(_aM && st[_aM]) st[_aM].mvp++;
     if(_aG && st[_aG]) st[_aG].gk++;
     if(_aH && st[_aH]) st[_aH].hachazos++;
     if(_aP && st[_aP]) st[_aP].polemicas++;
+    if(_aGo && st[_aGo]) st[_aGo].golazos++;
+    if(_aMu && st[_aMu]) st[_aMu].muros++;
     data.players.forEach(p=>{ st[p.id].escabio += escQty(m, p.id); });
   });
   // racha invicta (actual y mejor historica) por jugador
@@ -1358,6 +1425,8 @@ function rankCats(){
     d:      ['Derrotas',         s=>s.d],
     invicto:['Invictos',         s=>s.racha],
     racha:  ['Racha invicta',    s=>s.rachaAct],
+    golazos:['🔥 Golazo Piel Morena', s=>s.golazos],
+    muros:  ['🧱 Muro',          s=>s.muros],
     hachazos:['🪓 Hachazos',     s=>s.hachazos],
     polemicas:['📣 Polémica',    s=>s.polemicas]
   };
@@ -1365,6 +1434,8 @@ function rankCats(){
 const RANK_HELP = {
   mvp:      '👑 Figura: el mejor jugador del partido.',
   gk:       '🧤 Mejor arquero: el arquero más destacado del partido.',
+  golazos:  '🔥 Golazo Piel Morena: el mejor gol del partido (premio estilo Puskas, inspirado en la canción de Talía).',
+  muros:    '🧱 Muro: el mejor defensor del partido.',
   invicto:  'Invictos: máxima cantidad de partidos seguidos sin perder (mejor racha histórica).',
   racha:    'Racha invicta: partidos sin perder que lleva el jugador en la actualidad.',
   hachazos: '🪓 Hachazo: el jugador más pegador del partido.',
@@ -1382,7 +1453,7 @@ function rankingHTML(){
   const help = RANK_HELP[rankCat] ? `<div class="cat-help">${esc(RANK_HELP[rankCat])}</div>` : '';
   if(!rows.length) return `<div class="card">${head}<p class="muted">Sin datos todavía.</p></div>`;
   const pod = rows.slice(0,3).map((r,i)=>{
-    const icon = i===0 ? ({mvp:'👑', hachazos:'🪓', polemicas:'📣', d:'🌩️'}[rankCat] || '') : '';
+    const icon = i===0 ? ({mvp:'👑', golazos:'🔥', muros:'🧱', hachazos:'🪓', polemicas:'📣', d:'🌩️'}[rankCat] || '') : '';
     return `
     <div class="podium-item p${i+1}">
       <span class="medal">${i+1}°</span>
@@ -1407,7 +1478,7 @@ function rankingHTML(){
 function statsHTML(){
   const st = computeStats();
   const rows = data.players.map(p=>({p, s:st[p.id]}))
-    .filter(r=> r.s.pj || r.s.goles || r.s.asist || r.s.mvp || r.s.gk)
+    .filter(r=> r.s.pj || r.s.goles || r.s.asist || r.s.mvp || r.s.gk || r.s.golazos || r.s.muros)
     .sort((x,y)=> y.s.goles-x.s.goles || y.s.asist-x.s.asist || y.s.v-x.s.v || x.p.name.localeCompare(y.p.name));
   const head = `<div class="section-head"><h2>Estadísticas</h2></div>`;
   if(!rows.length){
@@ -1435,12 +1506,14 @@ function statsHTML(){
     <td class="c loss">${r.s.polemicas||''}</td>
     <td class="c">${r.s.mvp||''}</td>
     <td class="c">${r.s.gk||''}</td>
+    <td class="c">${r.s.golazos||''}</td>
+    <td class="c">${r.s.muros||''}</td>
   </tr>`).join('');
   return head + rankingHTML() + summary + `<div class="card"><div class="table-wrap"><table class="table">
-    <thead><tr><th class="c">#</th><th>Jugador</th><th class="c">PJ</th><th class="c">G</th><th class="c">A</th><th class="c">V</th><th class="c">E</th><th class="c">D</th><th class="c">Rach</th><th class="c">Hach</th><th class="c">Polém</th><th class="c">MVP</th><th class="c">Arq</th></tr></thead>
+    <thead><tr><th class="c">#</th><th>Jugador</th><th class="c">PJ</th><th class="c">G</th><th class="c">A</th><th class="c">V</th><th class="c">E</th><th class="c">D</th><th class="c">Rach</th><th class="c">Golaz</th><th class="c">Muro</th><th class="c">Hach</th><th class="c">Polém</th><th class="c">MVP</th><th class="c">Arq</th></tr></thead>
     <tbody>${body}</tbody>
   </table></div></div>
-  <p class="muted" style="text-align:center">PJ: jugados · G: goles · A: asistencias · V: ganados · E: empatados · D: perdidos · Rach: mejor racha invicta · Hach: hachazos · Polém: polémicas · MVP: figura · Arq: mejor arquero</p>` + escabioChartHTML();
+  <p class="muted" style="text-align:center">PJ: jugados · G: goles · A: asistencias · V: ganados · E: empatados · D: perdidos · Rach: mejor racha invicta · Golaz: golazo Piel Morena · Muro: mejor defensor · Hach: hachazos · Polém: polémicas · MVP: figura · Arq: mejor arquero</p>` + escabioChartHTML();
 }
 
 function escabioChartHTML(){
@@ -1503,14 +1576,15 @@ function playerDetailHTML(){
         </div>
       </div>`;
   }
-  const s = computeStats()[p.id] || {pj:0,goles:0,asist:0,mvp:0,gk:0,v:0,d:0,e:0,escabio:0,hachazos:0,polemicas:0,racha:0,rachaAct:0};
+  const s = computeStats()[p.id] || {pj:0,goles:0,asist:0,mvp:0,gk:0,v:0,d:0,e:0,escabio:0,hachazos:0,polemicas:0,golazos:0,muros:0,racha:0,rachaAct:0};
   const played = data.matches
     .filter(m=>(m.teamA||[]).includes(p.id) || (m.teamB||[]).includes(p.id))
     .sort((a,b)=>(a.date||'').localeCompare(b.date||''));
 
   const invictos = s.v + s.e;
   const tiles = [['PJ',s.pj,''],['V',s.v,'win'],['E',s.e,''],['D',s.d,'loss'],
-                 ['Goles',s.goles,''],['Asist.',s.asist,''],['Hachazos',s.hachazos,'loss'],['Polémica',s.polemicas,'loss'],
+                 ['Goles',s.goles,''],['Asist.',s.asist,''],['Golazo',s.golazos,'gold'],['Muro',s.muros,'gold'],
+                 ['Hachazos',s.hachazos,'loss'],['Polémica',s.polemicas,'loss'],
                  ['Figura',s.mvp,'gold'],['Arquero',s.gk,'gold'],['Escabio',s.escabio,'gold']]
     .map(([l,v,c])=>`<div class="tile"><span class="tile-num ${c}">${v}</span><span class="tile-lbl">${l}</span></div>`).join('');
 
@@ -1521,15 +1595,17 @@ function playerDetailHTML(){
     const res = my>opp?'G':my<opp?'P':'E';
     const rc = res==='G'?'win':res==='P'?'loss':'draw';
     const g = (m.events||[]).filter(ev=> ev.side===side && ev.scorerId===p.id).length;
-    const as = (m.events||[]).filter(ev=> ev.side===side && ev.assistId===p.id).length;
+    const as = assistQty(m, p.id);
     const oppName = side==='A' ? m.teamBName : m.teamAName;
     const mvp = awardId(m,'mvp')===p.id ? '<span class="tag mvp">👑 Figura</span>' : '';
     const gk = awardId(m,'gk')===p.id ? '<span class="tag gk">🧤 Arquero</span>' : '';
+    const golazo = awardId(m,'golazo')===p.id ? '<span class="tag golazo">🔥 Golazo</span>' : '';
+    const muro = awardId(m,'muro')===p.id ? '<span class="tag muro">🧱 Muro</span>' : '';
     const contrib = `${g?`<span class="pill gold">${g} G</span>`:''}${as?`<span class="pill">${as} A</span>`:''}`;
     return `<div class="log-row">
       <span class="res ${rc}">${res}</span>
       <div class="log-info"><span class="log-date">${fmtDate(m.date)}</span>
-        <span class="log-vs">vs ${esc(oppName)}</span>${mvp}${gk}</div>
+        <span class="log-vs">vs ${esc(oppName)}</span>${mvp}${gk}${golazo}${muro}</div>
       <span class="log-score">${my}-${opp}</span>
       <span class="log-contrib">${contrib}</span>
     </div>`;
@@ -1716,9 +1792,9 @@ function jugadoresHTML(){
       <details class="help"><summary>Crear un partido</summary>
         <p class="muted">En <b>Partidos</b> tocá <b>+ Nuevo partido</b>, poné la fecha y elegí <b>Interno</b> (7 vs 7 entre nosotros) o <b>Contra un rival</b>.</p></details>
       <details class="help"><summary>Cargar goles y resultado</summary>
-        <p class="muted">Abrí el partido. En <b>Armar los equipos</b> tocá A o B para asignar a cada uno. Después usá <b>+ Gol</b> (elegís goleador y asistencia). El marcador se calcula solo.</p></details>
+        <p class="muted">Abrí el partido. En <b>Armar los equipos</b> tocá A o B para asignar a cada uno. Después usá <b>+ Gol</b> (elegís el goleador). El marcador se calcula solo. Las <b>asistencias</b> se cargan aparte, en la sección <b>🤝 Asistencias</b> (tocá + en el jugador).</p></details>
       <details class="help"><summary>Figura y mejor arquero del partido</summary>
-        <p class="muted">Dentro del partido elegí la <b>Figura</b> (MVP) y, si atajó alguien, el <b>Mejor arquero</b> (podés marcarlo aparte del MVP). Después se cuentan en el ranking y en la ficha.</p></details>
+        <p class="muted">Dentro del partido elegí la <b>Figura</b> (MVP), el <b>Mejor arquero</b>, el <b>🔥 Golazo Piel Morena</b> (premio estilo Puskas al gol más lindo) y el <b>🧱 Muro</b> (mejor defensor), además de hachazo y polémica. Después se cuentan en el ranking y en la ficha.</p></details>
       <details class="help"><summary>Post-partido: escabio y comentarios</summary>
         <p class="muted">En <b>Partidos</b>, abajo, elegí el partido en el selector. Cargá el <b>Escabio</b> con − / + y dejá <b>Comentarios</b> con tu nombre.</p></details>
       <details class="help"><summary>Ranking y estadísticas</summary>
@@ -1764,9 +1840,7 @@ function openAddGoal(side, evId){
   const isRivalSide = m.mode==='rival' && side==='B';
   if(!isRivalSide && !roster.length){ alert('Primero asigná jugadores a ese equipo.'); return; }
   const curScorer = ev ? (ev.scorerId || '') : '';
-  const curAssist = ev ? (ev.assistId || '') : '';
   const opts = roster.map(id=>`<option value="${id}"${id===curScorer?' selected':''}>${esc(pfull(id))}</option>`).join('');
-  const aopts = roster.map(id=>`<option value="${id}"${id===curAssist?' selected':''}>${esc(pfull(id))}</option>`).join('');
   const sideName = side==='A' ? m.teamAName : m.teamBName;
   openModal(`
     <h3>${ev?'Editar gol':'Gol'} de ${esc(sideName)}</h3>
@@ -1776,9 +1850,7 @@ function openAddGoal(side, evId){
         ${opts}
       </select>
     </label>
-    ${isRivalSide ? '' : `<label>Asistencia <span class="hint">(opcional)</span>
-      <select id="g-assist"><option value="">Sin asistencia</option>${aopts}</select>
-    </label>`}
+    <p class="muted" style="margin:0 0 10px">La asistencia se carga aparte, en la sección <b>🤝 Asistencias</b> del partido.</p>
     <input type="hidden" id="g-side" value="${side}">
     <input type="hidden" id="g-id" value="${ev?ev.id:''}">
     <div class="modal-actions">
@@ -1799,7 +1871,7 @@ function createMatch(){
     teamAName: mode==='rival' ? 'Piel Morena' : 'Equipo A',
     teamBName: mode==='rival' ? rival : 'Equipo B',
     rivalName: rival,
-    teamA: [], teamB: [], events: [], mvpId: null, gkId: null
+    teamA: [], teamB: [], events: [], assists: {}, mvpId: null, gkId: null, golazoId: null, muroId: null
   };
   data.matches.push(m); save(); persistMatch(m); closeModal();
   currentMatchId = m.id; view='partidos'; render();
@@ -1838,6 +1910,14 @@ function escAdjust(pid, delta){
   if(q === 0) delete m.escabio[pid]; else m.escabio[pid] = q;
   save(); persistMatch(m); render();
 }
+function assistAdjust(pid, delta){
+  const m = data.matches.find(x=>x.id===currentMatchId); if(!canEditMatch(m)) return;
+  if(!m.assists || Array.isArray(m.assists)) m.assists = migAssists(m);
+  let q = (Number(m.assists[pid]) || 0) + delta;
+  if(q < 0) q = 0;
+  if(q === 0) delete m.assists[pid]; else m.assists[pid] = q;
+  save(); persistMatch(m); render();
+}
 function escTotalAdjust(delta){
   const m = data.matches.find(x=>x.id===escabioMatchId); if(!canEditMatch(m)) return;
   m.escabioTotal = Math.max(0, escTotal(m) + delta);
@@ -1864,14 +1944,11 @@ function confirmGoal(){
   const m = data.matches.find(x=>x.id===currentMatchId); if(!canEditMatch(m)) return;
   const side = $('#g-side').value;
   const scorerId = $('#g-scorer').value || null;
-  const assistEl = $('#g-assist');
-  let assistId = assistEl ? (assistEl.value || null) : null;
-  if(assistId === scorerId) assistId = null;
   const gidEl = document.getElementById('g-id');
   const gid = gidEl ? gidEl.value : '';
   const ev = gid ? (m.events||[]).find(e=>e.id===gid) : null;
-  if(ev){ ev.side = side; ev.scorerId = scorerId; ev.assistId = assistId; }
-  else { m.events.push({ id: uid(), side, scorerId, assistId }); sfx('goal'); }
+  if(ev){ ev.side = side; ev.scorerId = scorerId; }
+  else { m.events.push({ id: uid(), side, scorerId }); sfx('goal'); }
   save(); persistMatch(m); closeModal(); render();
 }
 function delGoal(id){
@@ -1963,8 +2040,14 @@ function delPlayer(id){
     m.teamA = m.teamA.filter(x=>x!==id);
     m.teamB = m.teamB.filter(x=>x!==id);
     m.events = (m.events||[]).filter(e=> e.scorerId!==id && e.assistId!==id);
+    if(m.assists && !Array.isArray(m.assists)) delete m.assists[id];
+    else if(Array.isArray(m.assists)) m.assists = m.assists.filter(x=>x!==id);
     if(m.mvpId===id) m.mvpId=null;
     if(m.gkId===id) m.gkId=null;
+    if(m.golazoId===id) m.golazoId=null;
+    if(m.muroId===id) m.muroId=null;
+    if(m.hachazoId===id) m.hachazoId=null;
+    if(m.polemicaId===id) m.polemicaId=null;
   });
   save(); removePlayerDoc(id); data.matches.forEach(persistMatch); render();
 }
@@ -2211,6 +2294,8 @@ document.addEventListener('click', e=>{
     case 'clear-teams': clearTeams(); break;
     case 'esc-inc': escAdjust(id, 1); break;
     case 'esc-dec': escAdjust(id, -1); break;
+    case 'assist-inc': assistAdjust(id, 1); break;
+    case 'assist-dec': assistAdjust(id, -1); break;
     case 'esc-total-inc': escTotalAdjust(1); break;
     case 'esc-total-dec': escTotalAdjust(-1); break;
     case 'add-comment': addComment(); break;

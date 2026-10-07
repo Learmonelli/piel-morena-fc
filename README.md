@@ -26,9 +26,9 @@ Aplicación web **mobile-first** para que un equipo amateur de fútbol 7 lleve l
 
 - **Jugadores** con **avatar pixel art generado por código** (sin imágenes), estilo *chibi*: cuerpo entero 24×32 en leve diagonal y **carnet de frente** (cabeza y hombros) en Estadísticas. Se elige piel, color y corte de pelo, expresión, barba, anteojos, gorra/vincha/gorro, y camiseta (color, segundo color y diseño).
 - **Partidos** internos (7 vs 7) o contra un rival, con fecha y equipos.
-- **Goles y asistencias** con selección de jugador por evento; el marcador se calcula solo.
-- **Figura del partido** (MVP), **Mejor arquero** del partido (separado del MVP) y **registro de victorias / empates / derrotas** por jugador.
-- **Ranking con podio** con categorías: goles, asistencias, goles+asist., figuras, partidos jugados, victorias, derrotas y escabio.
+- **Goles** con selección de goleador por evento; el marcador se calcula solo. Las **asistencias se guardan aparte** (sección propia por partido, se acreditan por jugador con +/−), sin tener que cargar un gol.
+- **Figura del partido** (MVP), **Mejor arquero** (separado del MVP), **🔥 Golazo Piel Morena** (premio estilo Puskas al mejor gol, inspirado en la canción de Talía) y **🧱 Muro** (mejor defensor), más hachazo y polémica; y **registro de victorias / empates / derrotas** por jugador.
+- **Ranking con podio** con categorías: goles, asistencias, goles+asist., figuras, golazo Piel Morena, muro, mejor arquero, partidos jugados, victorias, derrotas, invictos, racha, hachazos, polémica y escabio.
 - **Post-partido**: registro de "escabio" por cantidad (stepper −/+) y **comentarios** por partido.
 - **Ficha de cada jugador**: totales + historial partido a partido.
 - **Finalizar partido**: al cerrar un partido sus datos quedan bloqueados para todos (solo el admin puede reabrirlo), pero se pueden seguir agregando **comentarios**. Además, los partidos se finalizan **automáticamente al día siguiente** de su fecha.
@@ -105,8 +105,12 @@ SPA de un solo archivo. El estado de la app (`{ players, matches }`) vive en Fir
   "rivalName": "",
   "teamA": ["playerId1", "playerId2"],
   "teamB": ["playerId3"],
-  "events": [{ "id": "e1", "side": "A", "scorerId": "playerId1", "assistId": "playerId2" }],
+  "events": [{ "id": "e1", "side": "A", "scorerId": "playerId1" }],
+  "assists": { "playerId2": 1 },
   "mvpId": "playerId1",
+  "gkId": "playerId3",
+  "golazoId": "playerId1",
+  "muroId": "playerId3",
   "escabio": { "playerId1": 2 },
   "comments": [{ "id": "c1", "author": "Tuti", "text": "Buen partido", "ts": 1758600000000 }]
 }
