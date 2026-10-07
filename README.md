@@ -26,7 +26,7 @@ Aplicación web **mobile-first** para que un equipo amateur de fútbol 7 lleve l
 
 - **Jugadores** con **avatar pixel art generado por código** (sin imágenes), estilo *chibi*: cuerpo entero 24×32 en leve diagonal y **carnet de frente** (cabeza y hombros) en Estadísticas. Se elige piel, color y corte de pelo, expresión, barba, anteojos, gorra/vincha/gorro, y camiseta (color, segundo color y diseño).
 - **Partidos** internos (7 vs 7) o contra un rival, con fecha y equipos.
-- **Goles** con selección de goleador por evento; el marcador se calcula solo. Las **asistencias se guardan aparte** (sección propia por partido, se acreditan por jugador con +/−), sin tener que cargar un gol.
+- **Goles** con selección de goleador por evento; el marcador se calcula solo. Las **asistencias se guardan aparte** y se cargan con el botón **🤝 Asistencia** (elegís quién la dio), sin tener que cargar un gol.
 - **Figura del partido** (MVP), **Mejor arquero** (separado del MVP), **🔥 Golazo Piel Morena** (premio estilo Puskas al mejor gol, inspirado en la canción de Talía) y **🧱 Muro** (mejor defensor), más hachazo y polémica; y **registro de victorias / empates / derrotas** por jugador.
 - **Ranking con podio** con categorías: goles, asistencias, goles+asist., figuras, golazo Piel Morena, muro, mejor arquero, partidos jugados, victorias, derrotas, invictos, racha, hachazos, polémica y escabio.
 - **Post-partido**: registro de "escabio" por cantidad (stepper −/+) y **comentarios** por partido.
