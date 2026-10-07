@@ -208,6 +208,10 @@
   .tally.on{background:linear-gradient(145deg,#ffd23f,var(--gold-d));color:#2a1706;border-color:var(--gold)}
   .tally-group{display:flex;gap:3px;align-items:center}
   .tally-minus{min-width:30px;padding:4px 8px;font-size:18px;background:transparent;color:var(--muted)}
+  .tally-mode{display:flex;gap:6px;margin-top:10px}
+  .tally-mode .tm{flex:1;background:var(--card2);border:2px solid var(--line);color:var(--muted);
+    border-radius:10px;padding:9px 6px;font-family:inherit;font-size:16px;font-weight:800;cursor:pointer}
+  .tally-mode .tm.on{background:linear-gradient(145deg,#ffd23f,var(--gold-d));color:#2a1706;border-color:var(--gold)}
   .assign-row .pname{flex:1 1 auto;min-width:0}
   .assign-row .pname .nm-txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
@@ -458,7 +462,7 @@
       </svg>
       <div>
         <h1>Piel Morena FC</h1>
-        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v81</span></p>
+        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v82</span></p>
       </div>
     </div>
     <div class="header-btns">
@@ -482,6 +486,7 @@ let playerBackView = 'jugadores';
 let newFace = null;
 let newPositions = null;
 let rankCat = 'goles';
+let tallyMode = 'goal';
 let escabioMatchId = null;
 let commentName = localStorage.getItem('pmfc_name') || '';
 let playerEditMode = false;
@@ -1269,26 +1274,30 @@ function matchDetailHTML(){
 
   const ourGoals = (m.events||[]).filter(e=>e.scorerId).length;
   const assistFull = assistTotal(m) >= ourGoals;
+  const isGoalMode = tallyMode !== 'assist';
+
+  const tallyPlayers = playersSorted.filter(p=> m.teamA.includes(p.id) || m.teamB.includes(p.id));
+  const tallyList = tallyPlayers.length ? tallyPlayers.map(p=>{
+    const count = isGoalMode ? (m.events||[]).filter(e=>e.scorerId===p.id).length : assistQty(m, p.id);
+    const team = m.teamA.includes(p.id) ? 'A' : 'B';
+    const plusDis = isGoalMode ? dis : (assistFull ? ' disabled' : dis);
+    const title = isGoalMode ? 'Sumar gol' : (assistFull ? 'No puede haber más asistencias que goles' : 'Sumar asistencia');
+    return `<div class="assign-row">
+      <span class="pname">${playerAvatar(p,28)}${p.number?`<span class="num">${esc(p.number)}</span>`:''}<span class="nm-txt">${esc(pfull(p.id))}</span> <span class="pill">${team}</span></span>
+      <div class="row-actions">
+        ${count?`<button class="tally tally-minus" data-action="tally-sub" data-id="${p.id}"${dis} title="Restar">−</button>`:''}
+        <button class="tally ${count?'on':''}" data-action="tally-add" data-id="${p.id}"${plusDis} title="${title}">${isGoalMode?'⚽':'🤝'} <b>${count}</b></button>
+      </div>
+    </div>`;
+  }).join('') : '<p class="muted">Primero asigná jugadores a los equipos (A o B).</p>';
 
   const assign = playersSorted.length ? playersSorted.map(p=>{
     const inA=m.teamA.includes(p.id), inB=m.teamB.includes(p.id);
     const bBtn = isRival ? '' :
       `<button class="sidebtn ${inB?'on':''}" data-action="toggle-team" data-id="${p.id}" data-side="B"${dis}>B</button>`;
-    const gCount = (m.events||[]).filter(e=>e.scorerId===p.id).length;
-    const aCount = assistQty(m, p.id);
-    const tally = (inA||inB) ? `<div class="tally-btns">
-        <div class="tally-group">
-          ${gCount?`<button class="tally tally-minus" data-action="untally-goal" data-id="${p.id}"${dis} title="Restar gol">−</button>`:''}
-          <button class="tally ${gCount?'on':''}" data-action="tally-goal" data-id="${p.id}"${dis} title="Sumar gol">⚽ <b>${gCount}</b></button>
-        </div>
-        <div class="tally-group">
-          ${aCount?`<button class="tally tally-minus" data-action="assist-del" data-id="${p.id}"${dis} title="Restar asistencia">−</button>`:''}
-          <button class="tally ${aCount?'on':''}" data-action="tally-assist" data-id="${p.id}"${dis}${assistFull?' disabled':''} title="${assistFull?'No puede haber más asistencias que goles':'Sumar asistencia'}">🤝 <b>${aCount}</b></button>
-        </div>
-      </div>` : '';
     return `<div class="assign-row">
       <span class="pname">${playerAvatar(p,30)}${p.number?`<span class="num">${esc(p.number)}</span>`:''}<span class="nm-txt">${esc(pfull(p.id))}</span>${invBadge(p)}</span>
-      <div class="row-actions">${tally}
+      <div class="row-actions">
         <div class="side-btns">
           <button class="sidebtn ${inA?'on':''}" data-action="toggle-team" data-id="${p.id}" data-side="A"${dis}>${isRival?'Juega':'A'}</button>
           ${bBtn}
@@ -1352,8 +1361,13 @@ function matchDetailHTML(){
         <div class="vs">VS</div>
         <div class="team"><div class="nm">${esc(m.teamBName)}</div><div class="go">${b}</div></div>
       </div>
-      ${canEdit ? `${isRival?'<button class="btn primary sm block" data-action="add-rival-goal" style="margin-top:10px">⚽ Gol del rival</button>':''}
-        <p class="muted" style="text-align:center;margin:10px 0 0">Cada jugador suma lo suyo con <b>⚽</b> y <b>🤝</b>, y resta con <b>−</b>, en la lista de abajo.</p>` : `<p class="muted" style="text-align:center;margin-top:8px">🔒 Partido finalizado. Los datos no se pueden editar.</p>`}
+      ${canEdit ? `
+        <div class="tally-mode">
+          <button class="tm ${isGoalMode?'on':''}" data-action="tally-mode" data-mode="goal">⚽ Gol</button>
+          <button class="tm ${!isGoalMode?'on':''}" data-action="tally-mode" data-mode="assist">🤝 Asistencia</button>
+        </div>
+        ${isRival && isGoalMode ? `<button class="btn primary sm block" data-action="add-rival-goal" style="margin-top:8px">⚽ Gol del rival</button>`:''}
+        <div style="margin-top:8px">${tallyList}</div>` : `<p class="muted" style="text-align:center;margin-top:8px">🔒 Partido finalizado. Los datos no se pueden editar.</p>`}
     </div>
 
     <div class="card">
@@ -1823,7 +1837,7 @@ function jugadoresHTML(){
       <details class="help"><summary>Crear un partido</summary>
         <p class="muted">En <b>Partidos</b> tocá <b>+ Nuevo partido</b>, poné la fecha y elegí <b>Interno</b> (7 vs 7 entre nosotros) o <b>Contra un rival</b>.</p></details>
       <details class="help"><summary>Cargar goles y asistencias</summary>
-        <p class="muted">Abrí el partido y asigná quiénes juegan con A o B. Cada jugador suma lo suyo tocando <b>⚽</b> (gol) y <b>🤝</b> (asistencia) en la lista, y resta con <b>−</b>. El marcador se calcula solo. <b>No puede haber más asistencias que goles</b>: el 🤝 se habilita mientras haya goles por asistir. En los partidos contra un rival, el gol del rival se carga con el botón <b>⚽ Gol del rival</b>.</p></details>
+        <p class="muted">Abrí el partido y asigná quiénes juegan con A o B. En el <b>marcador</b> elegí <b>⚽ Gol</b> o <b>🤝 Asistencia</b> y tocá el jugador para sumar (o <b>−</b> para restar). El marcador se calcula solo. <b>No puede haber más asistencias que goles</b>: la asistencia se habilita mientras haya goles por asistir. En los partidos contra un rival, el gol del rival se carga con el botón <b>⚽ Gol del rival</b>.</p></details>
       <details class="help"><summary>Premios del partido</summary>
         <p class="muted">En la sección <b>🏆 Premios</b> del partido tocá <b>👑</b> figura, <b>🧤</b> arquero, <b>🔥</b> Golazo Piel Morena (premio estilo Puskas) y <b>🧱</b> Muro (mejor defensor), además de <b>🪓</b> hachazo y <b>📣</b> polémica. Después se cuentan en el ranking y en la ficha.</p></details>
       <details class="help"><summary>Post-partido: escabio y comentarios</summary>
@@ -1982,6 +1996,9 @@ function confirmGoal(){
   else { m.events.push({ id: uid(), side, scorerId }); sfx('goal'); }
   save(); persistMatch(m); closeModal(); render();
 }
+function setTallyMode(mode){ tallyMode = mode === 'assist' ? 'assist' : 'goal'; render(); }
+function tallyAdd(pid){ if(tallyMode==='assist') return tallyAssist(pid); return tallyGoal(pid); }
+function tallySub(pid){ if(tallyMode==='assist') return delAssist(pid); return untallyGoal(pid); }
 function tallyGoal(pid){
   const m = data.matches.find(x=>x.id===currentMatchId); if(!canEditMatch(m)) return;
   const side = (m.teamA||[]).includes(pid) ? 'A' : ((m.teamB||[]).includes(pid) ? 'B' : null);
@@ -2373,9 +2390,9 @@ document.addEventListener('click', e=>{
     case 'add-comment': addComment(); break;
     case 'del-comment': delComment(id); break;
     case 'rank-cat': rankCat = t.dataset.cat; render(); break;
-    case 'tally-goal': tallyGoal(id); break;
-    case 'untally-goal': untallyGoal(id); break;
-    case 'tally-assist': tallyAssist(id); break;
+    case 'tally-mode': setTallyMode(t.dataset.mode); break;
+    case 'tally-add': tallyAdd(id); break;
+    case 'tally-sub': tallySub(id); break;
     case 'add-rival-goal': addRivalGoal(); break;
     case 'edit-goal': openAddGoal(t.dataset.id); break;
     case 'confirm-goal': confirmGoal(); break;
