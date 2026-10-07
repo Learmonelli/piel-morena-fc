@@ -132,7 +132,8 @@ service cloud.firestore {
     }
     match /matches/{id} {
       allow read, create: if true;
-      allow update: if !resource.data.closed || isAdmin()
+      allow update: if !resource.data.keys().hasAny(['closed'])
+        || resource.data.closed == false || isAdmin()
         || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['comments']);
       allow delete: if isAdmin();
     }

@@ -450,7 +450,7 @@
       </svg>
       <div>
         <h1>Piel Morena FC</h1>
-        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v84</span></p>
+        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v85</span></p>
       </div>
     </div>
     <div class="header-btns">
@@ -700,7 +700,11 @@ async function initCloud(){
   cloudStarting = false;
 }
 function afterSnapshot(){
-  (data.matches||[]).forEach(m=>{ if(migrateAssists(m) && (!m.closed || isAdmin || DEMO)) persistMatch(m); });
+  (data.matches||[]).forEach(m=>{
+    let changed = migrateAssists(m);
+    if(m && !('closed' in m)){ m.closed = false; changed = true; }
+    if(changed) persistMatch(m);
+  });
   localStorage.setItem(KEY, JSON.stringify(data));
   autoCloseOldMatches();
   if(cloudState.status !== 'error') cloudState = { status:'ok', message:'Sincronizado en tiempo real.' };
@@ -858,7 +862,8 @@ service cloud.firestore {
     }
     match /matches/{id} {
       allow read, create: if true;
-      allow update: if !resource.data.closed || isAdmin()
+      allow update: if !resource.data.keys().hasAny(['closed'])
+        || resource.data.closed == false || isAdmin()
         || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['comments']);
       allow delete: if isAdmin();
     }
@@ -1902,7 +1907,7 @@ function createMatch(){
     teamAName: mode==='rival' ? 'Piel Morena' : 'Equipo A',
     teamBName: mode==='rival' ? rival : 'Equipo B',
     rivalName: rival,
-    teamA: [], teamB: [], events: [], assists: {}, mvpId: null, gkId: null, golazoId: null, muroId: null
+    teamA: [], teamB: [], events: [], assists: {}, mvpId: null, gkId: null, golazoId: null, muroId: null, closed: false
   };
   data.matches.push(m); save(); persistMatch(m); closeModal();
   currentMatchId = m.id; view='partidos'; render();
