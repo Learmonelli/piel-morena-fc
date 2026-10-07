@@ -141,7 +141,7 @@
   input[type=checkbox]{width:auto;margin:0;accent-color:var(--gold);transform:scale(1.25)}
 
   /* Assign rows */
-  .assign-row{display:flex;align-items:center;justify-content:space-between;
+  .assign-row{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px 6px;
     padding:9px 0;border-bottom:1px solid rgba(74,33,48,.55)}
   .assign-row:last-child{border-bottom:0}
   .assign-row .pname{font-size:14px;display:flex;align-items:center;gap:6px}
@@ -195,11 +195,17 @@
   .sidebtn{background:transparent;border:1px solid var(--line);color:var(--muted);
     border-radius:9px;padding:7px 13px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit}
   .sidebtn.on{background:var(--gold);border-color:var(--gold);color:#2a1706}
-  .row-actions{display:flex;align-items:center;gap:6px;flex:0 0 auto}
+  .row-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end;margin-left:auto}
   .award-btns{display:flex;gap:2px}
   .award-btn{background:transparent;border:1px solid var(--line);border-radius:8px;padding:2px 4px;
     font-size:15px;line-height:1;cursor:pointer;filter:grayscale(1) opacity(.45)}
   .award-btn.on{filter:none;background:rgba(242,183,5,.2);border-color:var(--gold)}
+  .tally-btns{display:flex;gap:4px}
+  .tally{display:flex;align-items:center;gap:4px;background:var(--card2);border:2px solid var(--line);
+    color:var(--muted);border-radius:9px;padding:4px 8px;font-family:inherit;font-size:15px;font-weight:800;
+    cursor:pointer;line-height:1;min-width:44px;justify-content:center}
+  .tally b{font-size:16px}
+  .tally.on{background:linear-gradient(145deg,#ffd23f,var(--gold-d));color:#2a1706;border-color:var(--gold)}
   .assign-row .pname{flex:1 1 auto;min-width:0}
   .assign-row .pname .nm-txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
@@ -450,7 +456,7 @@
       </svg>
       <div>
         <h1>Piel Morena FC</h1>
-        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v78</span></p>
+        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v79</span></p>
       </div>
     </div>
     <div class="header-btns">
@@ -1244,25 +1250,34 @@ function matchDetailHTML(){
   const canEdit = canEditMatch(m);
   const dis = canEdit ? '' : ' disabled';
 
-  const assign = data.players.length ? data.players.slice().sort((a,b)=>{
+  const playersSorted = data.players.length ? data.players.slice().sort((a,b)=>{
     const an = (m.teamA.includes(a.id)||m.teamB.includes(a.id)) ? 0 : 1;
     const bn = (m.teamA.includes(b.id)||m.teamB.includes(b.id)) ? 0 : 1;
     return an - bn;
-  }).map(p=>{
-    const inA=m.teamA.includes(p.id), inB=m.teamB.includes(p.id);
-    const bBtn = isRival ? '' :
-      `<button class="sidebtn ${inB?'on':''}" data-action="toggle-team" data-id="${p.id}" data-side="B"${dis}>B</button>`;
-    const awardBtns = (inA||inB) ? `<div class="award-btns">
+  }) : [];
+
+  const awardBtnsFor = (p) => `<div class="award-btns">
         <button class="award-btn ${m.mvpId===p.id?'on':''}" data-action="aw" data-id="${p.id}" data-cat="mvp"${dis} title="Figura">👑</button>
         <button class="award-btn ${m.gkId===p.id?'on':''}" data-action="aw" data-id="${p.id}" data-cat="gk"${dis} title="Mejor arquero">🧤</button>
         <button class="award-btn ${m.golazoId===p.id?'on':''}" data-action="aw" data-id="${p.id}" data-cat="golazo"${dis} title="Golazo Piel Morena">🔥</button>
         <button class="award-btn ${m.muroId===p.id?'on':''}" data-action="aw" data-id="${p.id}" data-cat="muro"${dis} title="Muro (mejor defensor)">🧱</button>
         <button class="award-btn ${m.hachazoId===p.id?'on':''}" data-action="aw" data-id="${p.id}" data-cat="hachazo"${dis} title="Hachazo">🪓</button>
         <button class="award-btn ${m.polemicaId===p.id?'on':''}" data-action="aw" data-id="${p.id}" data-cat="polemica"${dis} title="Polémica">📣</button>
+      </div>`;
+
+  const assign = playersSorted.length ? playersSorted.map(p=>{
+    const inA=m.teamA.includes(p.id), inB=m.teamB.includes(p.id);
+    const bBtn = isRival ? '' :
+      `<button class="sidebtn ${inB?'on':''}" data-action="toggle-team" data-id="${p.id}" data-side="B"${dis}>B</button>`;
+    const gCount = (m.events||[]).filter(e=>e.scorerId===p.id).length;
+    const aCount = assistQty(m, p.id);
+    const tally = (inA||inB) ? `<div class="tally-btns">
+        <button class="tally ${gCount?'on':''}" data-action="tally-goal" data-id="${p.id}"${dis} title="Sumar gol">⚽ <b>${gCount}</b></button>
+        <button class="tally ${aCount?'on':''}" data-action="tally-assist" data-id="${p.id}"${dis} title="Sumar asistencia">🤝 <b>${aCount}</b></button>
       </div>` : '';
     return `<div class="assign-row">
       <span class="pname">${playerAvatar(p,30)}${p.number?`<span class="num">${esc(p.number)}</span>`:''}<span class="nm-txt">${esc(pfull(p.id))}</span>${invBadge(p)}</span>
-      <div class="row-actions">${awardBtns}
+      <div class="row-actions">${tally}
         <div class="side-btns">
           <button class="sidebtn ${inA?'on':''}" data-action="toggle-team" data-id="${p.id}" data-side="A"${dis}>${isRival?'Juega':'A'}</button>
           ${bBtn}
@@ -1270,6 +1285,12 @@ function matchDetailHTML(){
       </div>
     </div>`;
   }).join('') : '<p class="muted">Primero cargá jugadores en la pestaña Jugadores.</p>';
+
+  const premiosPlayers = playersSorted.filter(p=> m.teamA.includes(p.id) || m.teamB.includes(p.id));
+  const premios = premiosPlayers.length ? premiosPlayers.map(p=>`<div class="assign-row">
+      <span class="pname">${playerAvatar(p,28)}${p.number?`<span class="num">${esc(p.number)}</span>`:''}<span class="nm-txt">${esc(pfull(p.id))}</span>${invBadge(p)}</span>
+      <div class="row-actions">${awardBtnsFor(p)}</div>
+    </div>`).join('') : '<p class="muted">Primero asigná jugadores a los equipos (A o B).</p>';
 
   const guestAdd = `<div class="guest-add">
       <input id="g-name" type="text" placeholder="Invitado (sin perfil)…" autocomplete="off">
@@ -1279,7 +1300,7 @@ function matchDetailHTML(){
 
   const goalItem = (ev, side) => {
     const scorer = ev.scorerId ? esc(pfull(ev.scorerId)) : 'Gol del rival';
-    const edit = canEdit ? `<button class="icon-btn" data-action="edit-goal" data-side="${side}" data-id="${ev.id}" title="Editar goleador (la asistencia va aparte)">✎</button>` : '';
+    const edit = canEdit ? `<button class="icon-btn" data-action="edit-goal" data-id="${ev.id}" title="Editar goleador">✎</button>` : '';
     const del = canEdit ? `<button class="icon-btn" data-action="del-goal" data-id="${ev.id}">×</button>` : '';
     return `<div class="goal-item goal-item-${side.toLowerCase()}"><span class="goal-main">${scorer}</span>${edit}${del}</div>`;
   };
@@ -1320,16 +1341,14 @@ function matchDetailHTML(){
         <div class="vs">VS</div>
         <div class="team"><div class="nm">${esc(m.teamBName)}</div><div class="go">${b}</div></div>
       </div>
-      ${canEdit ? `<div class="grid2" style="margin-top:10px">
-        <button class="btn primary sm" data-action="add-goal">⚽ Gol</button>
-        <button class="btn primary sm" data-action="add-assist">🤝 Asistencia</button>
-      </div>` : `<p class="muted" style="text-align:center;margin-top:8px">🔒 Partido finalizado. Los datos no se pueden editar.</p>`}
+      ${canEdit ? `${isRival?'<button class="btn primary sm block" data-action="add-rival-goal" style="margin-top:10px">⚽ Gol del rival</button>':''}
+        <p class="muted" style="text-align:center;margin:10px 0 0">Cada jugador suma lo suyo: <b>⚽</b> gol y <b>🤝</b> asistencia, en la lista de abajo.</p>` : `<p class="muted" style="text-align:center;margin-top:8px">🔒 Partido finalizado. Los datos no se pueden editar.</p>`}
     </div>
 
     <div class="card">
       <h3>⚽ Goles (${m.events.length})</h3>
       ${goals}
-      ${canEdit ? `<p class="muted" style="margin:10px 0 0">Tocá <b>✎</b> para cambiar el goleador o <b>×</b> para borrar. La asistencia se carga con el botón <b>🤝 Asistencia</b>.</p>` : ''}
+      ${canEdit ? `<p class="muted" style="margin:10px 0 0">Tocá <b>✎</b> para cambiar el goleador o <b>×</b> para borrar.</p>` : ''}
     </div>
 
     ${assistsCard}
@@ -1343,8 +1362,13 @@ function matchDetailHTML(){
       </div>
       <p class="muted" style="margin:0 0 10px">Marcá quiénes juegan con A o B y tocá <b>Sortear</b> para repartirlos al azar en partes iguales.</p>` : ''}
       ${canEdit ? guestAdd : ''}
-      ${canEdit ? `<p class="muted" style="margin:0 0 10px">Premios: tocá 👑 figura · 🧤 arquero · 🔥 golazo · 🧱 muro · 🪓 hachazo · 📣 polémica al lado de cada jugador (podés darle varios a la vez).</p>` : ''}
       ${assign}
+    </div>
+
+    <div class="card">
+      <h3>🏆 Premios del partido</h3>
+      ${canEdit ? `<p class="muted" style="margin:0 0 10px">Tocá 👑 figura · 🧤 arquero · 🔥 golazo · 🧱 muro · 🪓 hachazo · 📣 polémica al lado de cada jugador (podés darle varios a la vez).</p>` : ''}
+      ${premios}
     </div>
 
     ${m.closed && (isAdmin || DEMO) ? `<button class="btn ghost block" data-action="reopen-match" data-id="${m.id}" style="margin-bottom:10px">Reabrir partido</button>` : ''}
@@ -1788,9 +1812,9 @@ function jugadoresHTML(){
       <details class="help"><summary>Crear un partido</summary>
         <p class="muted">En <b>Partidos</b> tocá <b>+ Nuevo partido</b>, poné la fecha y elegí <b>Interno</b> (7 vs 7 entre nosotros) o <b>Contra un rival</b>.</p></details>
       <details class="help"><summary>Cargar goles y asistencias</summary>
-        <p class="muted">Abrí el partido. En <b>Armar los equipos</b> tocá A o B para asignar a cada uno. Después tocá <b>⚽ Gol</b> y elegí el goleador (en los partidos contra un rival podés marcar el gol del rival). Para las asistencias usá <b>🤝 Asistencia</b> y elegí quién la dio. El marcador se calcula solo.</p></details>
-      <details class="help"><summary>Figura y mejor arquero del partido</summary>
-        <p class="muted">Dentro del partido elegí la <b>Figura</b> (MVP), el <b>Mejor arquero</b>, el <b>🔥 Golazo Piel Morena</b> (premio estilo Puskas al gol más lindo) y el <b>🧱 Muro</b> (mejor defensor), además de hachazo y polémica. Después se cuentan en el ranking y en la ficha.</p></details>
+        <p class="muted">Abrí el partido y asigná quiénes juegan con A o B. Cada jugador suma lo suyo tocando <b>⚽</b> (gol) y <b>🤝</b> (asistencia) en la lista. El marcador se calcula solo. En los partidos contra un rival, el gol del rival se carga con el botón <b>⚽ Gol del rival</b>.</p></details>
+      <details class="help"><summary>Premios del partido</summary>
+        <p class="muted">En la sección <b>🏆 Premios</b> del partido tocá <b>👑</b> figura, <b>🧤</b> arquero, <b>🔥</b> Golazo Piel Morena (premio estilo Puskas) y <b>🧱</b> Muro (mejor defensor), además de <b>🪓</b> hachazo y <b>📣</b> polémica. Después se cuentan en el ranking y en la ficha.</p></details>
       <details class="help"><summary>Post-partido: escabio y comentarios</summary>
         <p class="muted">En <b>Partidos</b>, abajo, elegí el partido en el selector. Cargá el <b>Escabio</b> con − / + y dejá <b>Comentarios</b> con tu nombre.</p></details>
       <details class="help"><summary>Ranking y estadísticas</summary>
@@ -1848,30 +1872,11 @@ function openAddGoal(evId){
         ${isRival ? '<option value="">Gol del rival (sin jugador)</option>' : ''}
       </select>
     </label>
-    <p class="muted" style="margin:0 0 10px">La asistencia se carga aparte, con el botón <b>🤝 Asistencia</b>.</p>
+    <p class="muted" style="margin:0 0 10px">La asistencia se carga aparte, con el <b>🤝</b> en cada jugador.</p>
     <input type="hidden" id="g-id" value="${ev?ev.id:''}">
     <div class="modal-actions">
       <button class="btn ghost" data-action="modal-close">Cancelar</button>
       <button class="btn primary" data-action="confirm-goal">${ev?'Guardar cambios':'Guardar gol'}</button>
-    </div>
-  `);
-}
-
-function openAddAssist(){
-  const m = data.matches.find(x=>x.id===currentMatchId); if(!m || !canEditMatch(m)) return;
-  if(!m.teamA.length && !m.teamB.length){ alert('Primero asigná jugadores a los equipos.'); return; }
-  openModal(`
-    <h3>🤝 Nueva asistencia</h3>
-    <label>¿Quién la dio?
-      <select id="a-player">
-        <option value="">— Elegí el jugador —</option>
-        <optgroup label="${esc(m.teamAName)}">${playerOpts(m.teamA,'')}</optgroup>
-        ${m.mode==='rival' ? '' : `<optgroup label="${esc(m.teamBName)}">${playerOpts(m.teamB,'')}</optgroup>`}
-      </select>
-    </label>
-    <div class="modal-actions">
-      <button class="btn ghost" data-action="modal-close">Cancelar</button>
-      <button class="btn primary" data-action="confirm-assist">Guardar asistencia</button>
     </div>
   `);
 }
@@ -1960,13 +1965,23 @@ function confirmGoal(){
   else { m.events.push({ id: uid(), side, scorerId }); sfx('goal'); }
   save(); persistMatch(m); closeModal(); render();
 }
-function confirmAssist(){
+function tallyGoal(pid){
   const m = data.matches.find(x=>x.id===currentMatchId); if(!canEditMatch(m)) return;
-  const pid = $('#a-player').value || '';
-  if(!pid){ alert('Elegí el jugador.'); return; }
+  const side = (m.teamA||[]).includes(pid) ? 'A' : ((m.teamB||[]).includes(pid) ? 'B' : null);
+  if(!side){ alert('Primero asigná al jugador a un equipo (A o B).'); return; }
+  m.events.push({ id: uid(), side, scorerId: pid });
+  sfx('goal'); save(); persistMatch(m); render();
+}
+function addRivalGoal(){
+  const m = data.matches.find(x=>x.id===currentMatchId); if(!canEditMatch(m)) return;
+  m.events.push({ id: uid(), side:'B', scorerId: null });
+  sfx('goal'); save(); persistMatch(m); render();
+}
+function tallyAssist(pid){
+  const m = data.matches.find(x=>x.id===currentMatchId); if(!canEditMatch(m)) return;
   if(!m.assists || Array.isArray(m.assists)) m.assists = migAssists(m);
   m.assists[pid] = (Number(m.assists[pid]) || 0) + 1;
-  save(); persistMatch(m); closeModal(); render();
+  save(); persistMatch(m); render();
 }
 function delAssist(pid){
   const m = data.matches.find(x=>x.id===currentMatchId); if(!canEditMatch(m)) return;
@@ -2324,11 +2339,11 @@ document.addEventListener('click', e=>{
     case 'add-comment': addComment(); break;
     case 'del-comment': delComment(id); break;
     case 'rank-cat': rankCat = t.dataset.cat; render(); break;
-    case 'add-goal': openAddGoal(); break;
+    case 'tally-goal': tallyGoal(id); break;
+    case 'tally-assist': tallyAssist(id); break;
+    case 'add-rival-goal': addRivalGoal(); break;
     case 'edit-goal': openAddGoal(t.dataset.id); break;
     case 'confirm-goal': confirmGoal(); break;
-    case 'add-assist': openAddAssist(); break;
-    case 'confirm-assist': confirmAssist(); break;
     case 'del-goal': delGoal(id); break;
     case 'delete-match': deleteMatch(id); break;
     case 'close-match': closeMatch(id); break;
