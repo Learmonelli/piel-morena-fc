@@ -456,7 +456,7 @@
       </svg>
       <div>
         <h1>Piel Morena FC</h1>
-        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v79</span></p>
+        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v80</span></p>
       </div>
     </div>
     <div class="header-btns">
@@ -1265,6 +1265,9 @@ function matchDetailHTML(){
         <button class="award-btn ${m.polemicaId===p.id?'on':''}" data-action="aw" data-id="${p.id}" data-cat="polemica"${dis} title="Polémica">📣</button>
       </div>`;
 
+  const ourGoals = (m.events||[]).filter(e=>e.scorerId).length;
+  const assistFull = assistTotal(m) >= ourGoals;
+
   const assign = playersSorted.length ? playersSorted.map(p=>{
     const inA=m.teamA.includes(p.id), inB=m.teamB.includes(p.id);
     const bBtn = isRival ? '' :
@@ -1273,7 +1276,7 @@ function matchDetailHTML(){
     const aCount = assistQty(m, p.id);
     const tally = (inA||inB) ? `<div class="tally-btns">
         <button class="tally ${gCount?'on':''}" data-action="tally-goal" data-id="${p.id}"${dis} title="Sumar gol">⚽ <b>${gCount}</b></button>
-        <button class="tally ${aCount?'on':''}" data-action="tally-assist" data-id="${p.id}"${dis} title="Sumar asistencia">🤝 <b>${aCount}</b></button>
+        <button class="tally ${aCount?'on':''}" data-action="tally-assist" data-id="${p.id}"${dis}${assistFull?' disabled':''} title="${assistFull?'No puede haber más asistencias que goles':'Sumar asistencia'}">🤝 <b>${aCount}</b></button>
       </div>` : '';
     return `<div class="assign-row">
       <span class="pname">${playerAvatar(p,30)}${p.number?`<span class="num">${esc(p.number)}</span>`:''}<span class="nm-txt">${esc(pfull(p.id))}</span>${invBadge(p)}</span>
@@ -1812,7 +1815,7 @@ function jugadoresHTML(){
       <details class="help"><summary>Crear un partido</summary>
         <p class="muted">En <b>Partidos</b> tocá <b>+ Nuevo partido</b>, poné la fecha y elegí <b>Interno</b> (7 vs 7 entre nosotros) o <b>Contra un rival</b>.</p></details>
       <details class="help"><summary>Cargar goles y asistencias</summary>
-        <p class="muted">Abrí el partido y asigná quiénes juegan con A o B. Cada jugador suma lo suyo tocando <b>⚽</b> (gol) y <b>🤝</b> (asistencia) en la lista. El marcador se calcula solo. En los partidos contra un rival, el gol del rival se carga con el botón <b>⚽ Gol del rival</b>.</p></details>
+        <p class="muted">Abrí el partido y asigná quiénes juegan con A o B. Cada jugador suma lo suyo tocando <b>⚽</b> (gol) y <b>🤝</b> (asistencia) en la lista. El marcador se calcula solo. <b>No puede haber más asistencias que goles</b>: el 🤝 se habilita mientras haya goles por asistir. En los partidos contra un rival, el gol del rival se carga con el botón <b>⚽ Gol del rival</b>.</p></details>
       <details class="help"><summary>Premios del partido</summary>
         <p class="muted">En la sección <b>🏆 Premios</b> del partido tocá <b>👑</b> figura, <b>🧤</b> arquero, <b>🔥</b> Golazo Piel Morena (premio estilo Puskas) y <b>🧱</b> Muro (mejor defensor), además de <b>🪓</b> hachazo y <b>📣</b> polémica. Después se cuentan en el ranking y en la ficha.</p></details>
       <details class="help"><summary>Post-partido: escabio y comentarios</summary>
@@ -1961,7 +1964,13 @@ function confirmGoal(){
   const gidEl = document.getElementById('g-id');
   const gid = gidEl ? gidEl.value : '';
   const ev = gid ? (m.events||[]).find(e=>e.id===gid) : null;
-  if(ev){ ev.side = side; ev.scorerId = scorerId; }
+  if(ev){
+    if(ev.scorerId && !scorerId){
+      const ourGoalsAfter = (m.events||[]).filter(e=>e.scorerId && e.id!==ev.id).length;
+      if(assistTotal(m) > ourGoalsAfter){ alert('No podés dejar este gol sin jugador: quedarían más asistencias que goles. Quitá una asistencia primero.'); return; }
+    }
+    ev.side = side; ev.scorerId = scorerId;
+  }
   else { m.events.push({ id: uid(), side, scorerId }); sfx('goal'); }
   save(); persistMatch(m); closeModal(); render();
 }
@@ -1979,6 +1988,8 @@ function addRivalGoal(){
 }
 function tallyAssist(pid){
   const m = data.matches.find(x=>x.id===currentMatchId); if(!canEditMatch(m)) return;
+  const ourGoals = (m.events||[]).filter(e=>e.scorerId).length;
+  if(assistTotal(m) >= ourGoals){ alert('No puede haber más asistencias que goles. Cargá primero el gol.'); return; }
   if(!m.assists || Array.isArray(m.assists)) m.assists = migAssists(m);
   m.assists[pid] = (Number(m.assists[pid]) || 0) + 1;
   save(); persistMatch(m); render();
@@ -1992,6 +2003,11 @@ function delAssist(pid){
 }
 function delGoal(id){
   const m = data.matches.find(x=>x.id===currentMatchId); if(!canEditMatch(m)) return;
+  const ev = (m.events||[]).find(e=>e.id===id);
+  if(ev && ev.scorerId){
+    const ourGoalsAfter = (m.events||[]).filter(e=>e.scorerId && e.id!==id).length;
+    if(assistTotal(m) > ourGoalsAfter){ alert('No podés borrar este gol: quedarían más asistencias que goles. Quitá una asistencia primero.'); return; }
+  }
   m.events = m.events.filter(e=>e.id!==id); save(); persistMatch(m); render();
 }
 function deleteMatch(id){
