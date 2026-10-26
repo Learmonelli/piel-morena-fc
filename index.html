@@ -258,7 +258,7 @@
   .podium-item .pod-muros{top:42px;left:calc(50% + 7px);transform:rotate(42deg);font-size:20px;
     filter:grayscale(.2) brightness(1.15) drop-shadow(0 2px 2px rgba(0,0,0,.55))}
   .podium-name{display:block;font-size:12px;font-weight:700;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .podium-val{display:block;font-size:22px;font-weight:800;color:var(--gold);line-height:1.1}
+  .podium-val{display:block;font-size:22px;font-weight:800;color:var(--gold);line-height:1.1;white-space:nowrap}
   .podium-cat{display:block;font-size:9px;text-transform:uppercase;color:var(--muted);letter-spacing:.4px}
   .podium-wrap{display:flex;gap:10px;flex-wrap:wrap;align-items:stretch;margin-bottom:12px}
   .podium-wrap .podium{flex:1 1 210px;margin-bottom:0}
@@ -269,7 +269,8 @@
   .rank-pos{width:24px;text-align:center;font-weight:800;color:var(--muted);font-size:13px;flex:0 0 auto}
   .rank-name{flex:1;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .rank-sub{color:var(--muted);font-size:11px}
-  .rank-val{font-weight:800;font-size:18px;color:var(--gold)}
+  .rank-val{font-weight:800;font-size:18px;color:var(--gold);white-space:nowrap}
+  .avg-badge{font-size:10px;font-weight:600;color:var(--muted);letter-spacing:0;white-space:nowrap}
 
   /* Post-partido: escabio + comentarios */
   .esc-ctrl{display:flex;align-items:center;gap:8px}
@@ -450,7 +451,7 @@
       </svg>
       <div>
         <h1>Piel Morena FC</h1>
-        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v85</span></p>
+        <p>Estadísticas del equipo · 7 vs 7 · <span id="app-ver">v86</span></p>
       </div>
     </div>
     <div class="header-btns">
@@ -1428,6 +1429,11 @@ function computeStats(){
   });
   return st;
 }
+function perMatch(v, pj){ return pj ? v/pj : 0; }
+function avgText(v){ return v.toFixed(2).replace('.', ','); }
+function avgBadge(v, pj){
+  return (pj && v > 0) ? ` <span class="avg-badge">(${avgText(perMatch(v, pj))})</span>` : '';
+}
 function rankCats(){
   return {
     goles:  ['Goles',            s=>s.goles],
@@ -1460,6 +1466,8 @@ function rankingHTML(){
   const cats = rankCats();
   const st = computeStats();
   const [label, fn] = cats[rankCat] || cats.goles;
+  const avgKey = ({goles:'goles', asist:'asist', v:'v', d:'d'})[rankCat];
+  const showVal = s => (avgKey && s.pj) ? `${fn(s)}${avgBadge(s[avgKey], s.pj)}` : fn(s);
   const rows = data.players.map(p=>({p, s:st[p.id]}))
     .filter(r=> fn(r.s) > 0)
     .sort((x,y)=> fn(y.s)-fn(x.s) || y.s.goles-x.s.goles || y.s.asist-x.s.asist || x.p.name.localeCompare(y.p.name));
@@ -1475,7 +1483,7 @@ function rankingHTML(){
       ${icon ? `<span class="pod-icon pod-${rankCat}">${icon}</span>` : ''}
       ${playerAvatarBust(r.p,54)}
       <span class="podium-name">${esc(pname(r.p.id))}</span>
-      <span class="podium-val">${fn(r.s)}</span>
+      <span class="podium-val">${showVal(r.s)}</span>
       <span class="podium-cat">${esc(label)}</span>
     </div>`;
   }).join('');
@@ -1484,10 +1492,11 @@ function rankingHTML(){
       <span class="rank-pos">${i+1}</span>
       ${playerAvatarBust(r.p,30)}
       <span class="rank-name">${esc(r.p.name)}${invBadge(r.p)} <span class="rank-sub">· ${r.s.pj} PJ</span></span>
-      <span class="rank-val">${fn(r.s)}</span>
+      <span class="rank-val">${showVal(r.s)}</span>
     </div>`).join('');
   const podiumBlock = help ? `<div class="podium-wrap"><div class="podium">${pod}</div>${help}</div>` : `<div class="podium">${pod}</div>`;
-  return `<div class="card">${head}${podiumBlock}<div class="rank-list">${rest}</div></div>`;
+  const avgNote = avgKey ? `<p class="muted" style="text-align:center;font-size:12px;margin:10px 0 0">El número entre paréntesis es el promedio por partido jugado.</p>` : '';
+  return `<div class="card">${head}${podiumBlock}<div class="rank-list">${rest}</div>${avgNote}</div>`;
 }
 
 function statsHTML(){
