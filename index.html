@@ -481,7 +481,6 @@ let playerEditMode = false;
 
 /* ---------- Admin (solo este mail puede borrar partidos) ---------- */
 const ADMIN_EMAIL = 'leandroarmonelli@gmail.com';
-let auth = null;
 let currentUser = null;
 let isAdmin = false;
 function isAdminEmail(u){ return !!(u && u.email && u.email.toLowerCase() === ADMIN_EMAIL); }
@@ -594,43 +593,48 @@ function demoSeed(){
   return { players, matches };
 }
 
-/* ---------- Nube (Firebase / Firestore) ---------- */
-const FBCFG_KEY = 'pielmorenafc_fbconfig';
-const DEFAULT_FB_CONFIG = {
-  apiKey: "AIzaSyCwWiw-_4CSzSv5jXeHYd9eHwzOoUrssOQ",
-  authDomain: "piel-morena-fc.firebaseapp.com",
-  projectId: "piel-morena-fc",
-  storageBucket: "piel-morena-fc.firebasestorage.app",
-  messagingSenderId: "198605126708",
-  appId: "1:198605126708:web:d3c0f2de78e18041e01e61"
+/* ---------- Nube (Supabase / Postgres + Realtime) ---------- */
+const SBCFG_KEY = 'pielmorenafc_sbconfig';
+const DEFAULT_SB_CONFIG = {
+  url: "https://gzrmlghresdarqeaonir.supabase.co",
+  anonKey: "sb_publishable_-2mCf7RHOPVwNwzWbx7r1Q_80PJz3OL"    // Clave pública (NO la service_role)
 };
-let fbConfig = loadFbConfig();
-let db = null;
+let sbConfig = loadSbConfig();
+let sb = null;
 let cloudStarted = false;
 let cloudStarting = false;
 let cloudState = { status:'unset', message:'' };
 
-function loadFbConfig(){
-  try{ const c = JSON.parse(localStorage.getItem(FBCFG_KEY)); if(c && c.projectId) return c; }catch(e){}
-  return DEFAULT_FB_CONFIG;
+function loadSbConfig(){
+  try{ const c = JSON.parse(localStorage.getItem(SBCFG_KEY)); if(c && c.url && c.anonKey) return c; }catch(e){}
+  return (DEFAULT_SB_CONFIG.url && DEFAULT_SB_CONFIG.anonKey) ? DEFAULT_SB_CONFIG : null;
 }
-function cloudConfigured(){ return DEMO ? false : !!fbConfig; }
-function fsReady(){ return !!db; }
+function cloudConfigured(){ return DEMO ? false : !!(sbConfig && sbConfig.url && sbConfig.anonKey); }
+function fsReady(){ return !!sb && cloudStarted; }
 
-function parseFbConfig(text){
-  let s = String(text||'').trim();
-  s = s.replace(/^\s*(const|let|var)\s+\w+\s*=\s*/, '').replace(/;\s*$/, '');
-  const obj = new Function('return (' + s + ');')();
-  if(!obj || !obj.projectId) throw new Error('falta projectId');
-  return obj;
+function parseSbConfig(text){
+  const s = String(text||'').trim();
+  let obj = null;
+  try{ obj = JSON.parse(s); }catch(e){}
+  if(!obj){
+    const parts = s.split(/\s+/).filter(Boolean);
+    if(parts.length >= 2) obj = { url: parts[0], anonKey: parts[1] };
+  }
+  if(!obj) throw new Error('pegá la URL y la anon key');
+  const url = String(obj.url || obj.supabaseUrl || '').trim().replace(/\/+$/, '');
+  const anonKey = String(obj.anonKey || obj.key || obj.anon_key || '').trim();
+  if(!/^https?:\/\//.test(url)) throw new Error('URL inválida');
+  if(!anonKey) throw new Error('falta la anon key');
+  return { url, anonKey };
 }
-function saveFbConfig(){
+function saveSbConfig(){
   if(DEMO) return;
-  const el = document.getElementById('fb-config');
+  const el = document.getElementById('sb-config');
   try{
-    fbConfig = parseFbConfig(el ? el.value : '');
-    localStorage.setItem(FBCFG_KEY, JSON.stringify(fbConfig));
-    cloudStarted = false; db = null;
+    sbConfig = parseSbConfig(el ? el.value : '');
+    localStorage.setItem(SBCFG_KEY, JSON.stringify(sbConfig));
+    if(sb) sb.removeAllChannels();
+    cloudStarted = false; cloudStarting = false; sb = null;
     initCloud(); render();
   }catch(e){ alert('No pude leer la config: ' + e.message); }
 }
@@ -641,64 +645,93 @@ function loadScript(src){
     document.head.appendChild(s);
   });
 }
-async function ensureFirebase(){
-  if(typeof firebase !== 'undefined') return true;
-  if(!window.__fbLoading){
-    window.__fbLoading = (async()=>{
-      await loadScript('https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js');
-      await loadScript('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js');
-      await loadScript('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js');
-    })();
+async function ensureSupabase(){
+  if(window.supabase && window.supabase.createClient) return true;
+  if(!window.__sbLoading){
+    window.__sbLoading = loadScript('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2');
   }
-  try{ await window.__fbLoading; return typeof firebase !== 'undefined'; }
-  catch(e){ window.__fbLoading = null; return false; }
+  try{ await window.__sbLoading; return !!(window.supabase && window.supabase.createClient); }
+  catch(e){ window.__sbLoading = null; return false; }
+}
+function setSessionUser(u){
+  currentUser = u || null;
+  isAdmin = isAdminEmail(currentUser);
 }
 async function initCloud(){
   if(!cloudConfigured()){ cloudState = { status:'unset', message:'' }; renderCloudStatus(); return; }
   if(cloudStarted || cloudStarting) return;
   cloudStarting = true;
   cloudState = { status:'syncing', message:'Conectando...' }; renderCloudStatus();
-  const ok = await ensureFirebase();
+  const ok = await ensureSupabase();
   if(!ok){
     cloudStarting = false;
-    cloudState = { status:'error', message:'No se pudo cargar Firebase (revisá la conexión).' };
+    cloudState = { status:'error', message:'No se pudo cargar Supabase (revisá la conexión).' };
     renderCloudStatus(); return;
   }
   try{
-    firebase.initializeApp(fbConfig);
-    db = firebase.firestore();
+    sb = window.supabase.createClient(sbConfig.url, sbConfig.anonKey);
+
+    try{
+      const { data: sessionData } = await sb.auth.getSession();
+      setSessionUser(sessionData && sessionData.session ? sessionData.session.user : null);
+    }catch(e){ setSessionUser(null); }
+
+    sb.auth.onAuthStateChange((_event, session)=>{
+      setSessionUser(session ? session.user : null);
+      render();
+      autoCloseOldMatches();
+    });
+
+    await Promise.all([loadPlayers(), loadMatches()]);
+    try{ await loadBackups(); }
+    catch(e){ backupsLoaded = true; backupsBlocked = true; }
     cloudStarted = true;
-
-    if(firebase.auth){
-      auth = firebase.auth();
-      auth.onAuthStateChanged(u=>{
-        currentUser = u || null;
-        isAdmin = isAdminEmail(currentUser);
-        render();
-        autoCloseOldMatches();
-      });
-    }
-
-    db.collection('players').onSnapshot(snap=>{
-      data.players = snap.docs.map(d=>d.data());
-      afterSnapshot();
-    }, err=>cloudFail(err));
-
-    db.collection('matches').onSnapshot(snap=>{
-      data.matches = snap.docs.map(d=>d.data());
-      afterSnapshot();
-    }, err=>cloudFail(err));
-
-    db.collection('backups').onSnapshot(snap=>{
-      backups = snap.docs.map(d=>Object.assign({id:d.id}, d.data()));
-      backupsLoaded = true; backupsBlocked = false;
-      afterSnapshot();
-    }, ()=>{ backupsLoaded = true; backupsBlocked = true; render(); });
+    afterSnapshot();
+    subscribeRealtime();
   }catch(e){
-    cloudState = { status:'error', message:'Error al iniciar Firebase: ' + e.message };
+    cloudStarted = false;
+    cloudState = { status:'error', message:'Error al iniciar Supabase: ' + (e && e.message ? e.message : e) };
     renderCloudStatus();
   }
   cloudStarting = false;
+}
+async function loadPlayers(){
+  const { data: rows, error } = await sb.from('players').select('id,data');
+  if(error) throw error;
+  data.players = (rows || []).map(r=>Object.assign({}, r.data || {}, { id: r.id }));
+}
+async function loadMatches(){
+  const { data: rows, error } = await sb.from('matches').select('id,data');
+  if(error) throw error;
+  data.matches = (rows || []).map(r=>Object.assign({}, r.data || {}, { id: r.id }));
+}
+async function loadBackups(){
+  const { data: rows, error } = await sb.from('backups').select('id,data');
+  if(error) throw error;
+  backups = (rows || []).map(r=>Object.assign({ id: r.id }, r.data || {}));
+  backupsLoaded = true; backupsBlocked = false;
+}
+function subscribeRealtime(){
+  sb.channel('pielmorenafc')
+    .on('postgres_changes', { event:'*', schema:'public', table:'players' }, ()=>reloadTable('players'))
+    .on('postgres_changes', { event:'*', schema:'public', table:'matches' }, ()=>reloadTable('matches'))
+    .on('postgres_changes', { event:'*', schema:'public', table:'backups' }, ()=>reloadTable('backups'))
+    .subscribe(status=>{
+      if(status === 'SUBSCRIBED'){
+        if(cloudState.status !== 'error') cloudState = { status:'ok', message:'Sincronizado en tiempo real.' };
+      } else if(status === 'CHANNEL_ERROR' || status === 'TIMED_OUT'){
+        cloudState = { status:'error', message:'Se cortó el tiempo real (reintentando...).' };
+      }
+      renderCloudStatus();
+    });
+}
+async function reloadTable(name){
+  try{
+    if(name === 'players') await loadPlayers();
+    else if(name === 'matches') await loadMatches();
+    else await loadBackups();
+    afterSnapshot();
+  }catch(e){ cloudFail(e); }
 }
 function afterSnapshot(){
   (data.matches||[]).forEach(m=>{
@@ -713,30 +746,30 @@ function afterSnapshot(){
   render();
 }
 
-function persistPlayer(p){ if(fsReady()) db.collection('players').doc(p.id).set(p).catch(e=>cloudFail(e)); }
-function removePlayerDoc(id){ if(fsReady()) db.collection('players').doc(id).delete().catch(e=>cloudFail(e)); }
-function persistMatch(m){ if(fsReady()) db.collection('matches').doc(m.id).set(m).catch(e=>cloudFail(e)); }
-function persistComments(m){ if(fsReady()) db.collection('matches').doc(m.id).update({ comments: m.comments || [] }).catch(e=>cloudFail(e)); }
-function removeMatchDoc(id){ if(fsReady()) db.collection('matches').doc(id).delete().catch(e=>cloudFail(e)); }
-function cloudFail(e){ try{ console.error('Firestore error:', e && e.message ? e.message : e); }catch(_){} cloudState = { status:'error', message:'Error: ' + (e && e.message ? e.message : e) }; renderCloudStatus(); }
+function persistPlayer(p){ if(fsReady()) return sb.from('players').upsert({ id:p.id, data:p }).then(({error})=>{ if(error) cloudFail(error); }); }
+function removePlayerDoc(id){ if(fsReady()) return sb.from('players').delete().eq('id', id).then(({error})=>{ if(error) cloudFail(error); }); }
+function persistMatch(m){ if(fsReady()) return sb.from('matches').upsert({ id:m.id, data:m }).then(({error})=>{ if(error) cloudFail(error); }); }
+function persistComments(m){ if(fsReady()) return sb.rpc('set_match_comments', { p_id:m.id, p_comments: m.comments || [] }).then(({error})=>{ if(error) cloudFail(error); }); }
+function removeMatchDoc(id){ if(fsReady()) return sb.from('matches').delete().eq('id', id).then(({error})=>{ if(error) cloudFail(error); }); }
+function cloudFail(e){ try{ console.error('Supabase error:', e && e.message ? e.message : e); }catch(_){} cloudState = { status:'error', message:'Error: ' + (e && e.message ? e.message : e) }; renderCloudStatus(); }
 
-/* ---------- Sesión de administrador (Google) ---------- */
+/* ---------- Sesión de administrador (Google vía Supabase Auth) ---------- */
 function adminLogin(){
   if(!cloudConfigured()){ alert('Primero conectá la nube.'); return; }
-  ensureFirebase().then(()=>{
-    if(typeof firebase === 'undefined'){ alert('No se pudo cargar Firebase.'); return; }
-    if(!firebase.apps || !firebase.apps.length) firebase.initializeApp(fbConfig);
-    if(!auth) auth = firebase.auth();
-    auth.signInWithPopup(new firebase.auth.GoogleAuthProvider())
-      .catch(e=>alert('No se pudo iniciar sesión: ' + (e && e.message ? e.message : e)));
+  ensureSupabase().then(()=>{
+    if(!sb){ alert('No se pudo cargar Supabase.'); return; }
+    sb.auth.signInWithOAuth({
+      provider:'google',
+      options:{ redirectTo: location.origin + location.pathname }
+    }).then(({error})=>{ if(error) alert('No se pudo iniciar sesión: ' + (error.message || error)); });
   });
 }
-function adminLogout(){ if(auth) auth.signOut(); }
+function adminLogout(){ if(sb) sb.auth.signOut(); }
 function adminHTML(){
   if(!cloudConfigured()) return '';
   let inner;
   if(currentUser){
-    const who = esc(currentUser.email || currentUser.displayName || '');
+    const who = esc(currentUser.email || (currentUser.user_metadata && (currentUser.user_metadata.full_name || currentUser.user_metadata.name)) || '');
     inner = `<p class="muted" style="margin:6px 0">Sesión: <b>${who}</b>${isAdmin?' <span class="tag mvp">admin</span>':' <span class="hint">(sin permisos de admin)</span>'}</p>
       <button class="btn ghost sm" data-action="admin-logout">Salir</button>`;
   } else {
@@ -761,16 +794,20 @@ function createBackup(kind){
   if(!fsReady() || backupsBlocked) return;
   const week = backupWeekKey();
   const rec = { week, ts: Date.now(), kind: kind||'auto', players: data.players, matches: data.matches };
-  db.collection('backups').doc(week).set(rec)
-    .then(()=>{ cloudState = { status:'ok', message:'Backup '+fmtDate(week)+' guardado.' }; renderCloudStatus(); pruneBackups(); })
-    .catch(()=>{ backupsBlocked = true; render(); });
+  sb.from('backups').upsert({ id: week, data: rec })
+    .then(({error})=>{
+      if(error){ backupsBlocked = true; render(); return; }
+      cloudState = { status:'ok', message:'Backup '+fmtDate(week)+' guardado.' };
+      renderCloudStatus(); pruneBackups();
+    });
 }
 function pruneBackups(){
   if(!fsReady()) return;
-  db.collection('backups').get().then(snap=>{
-    const docs = snap.docs.slice().sort((a,b)=> String(b.data().week||'').localeCompare(String(a.data().week||'')));
-    docs.slice(8).forEach(d=>db.collection('backups').doc(d.id).delete().catch(()=>{}));
-  }).catch(()=>{});
+  sb.from('backups').select('id').order('id', { ascending:false }).then(({data:rows, error})=>{
+    if(error) return;
+    const old = (rows || []).slice(8).map(r=>r.id);
+    if(old.length) sb.from('backups').delete().in('id', old).then(()=>{});
+  });
 }
 function maybeAutoBackup(){
   if(autoBackupTried || !fsReady() || !backupsLoaded || backupsBlocked) return;
@@ -790,24 +827,22 @@ function downloadBackup(id){
 }
 function restoreBackup(id){
   const b = backups.find(x=>x.id===id); if(!b) return;
+  if(fsReady() && !isAdmin){ alert('Solo el administrador ('+ADMIN_EMAIL+') puede restaurar un backup.'); return; }
   if(!confirm('¿Restaurar el backup del '+fmtDate(b.week)+'? Se reemplazan los datos actuales en todos los dispositivos.')) return;
   const players = b.players||[], matches = b.matches||[];
   data.players = players; data.matches = matches; save(); render();
   if(fsReady()){
-    const overwrite = (name, arr) => db.collection(name).get().then(snap=>{
-      const dels = snap.docs.map(d=>db.collection(name).doc(d.id).delete());
-      return Promise.all(dels).then(()=>Promise.all(arr.map(o=>db.collection(name).doc(o.id).set(o))));
-    });
-    overwrite('players', players).then(()=>overwrite('matches', matches))
-      .then(()=>{ cloudState = { status:'ok', message:'Backup del '+fmtDate(b.week)+' restaurado.' }; renderCloudStatus(); })
-      .catch(e=>cloudFail(e));
+    sb.rpc('restore_team_data', { p_players: players, p_matches: matches })
+      .then(({error})=>{
+        if(error){ cloudFail(error); return; }
+        cloudState = { status:'ok', message:'Backup del '+fmtDate(b.week)+' restaurado.' }; renderCloudStatus();
+      });
   }
 }
 function backupsHTML(){
   if(!cloudConfigured()) return '';
   if(backupsBlocked) return `<h3 style="margin-top:16px">Backups en la nube</h3>
-    <p class="muted" style="color:#ff9a9d">Falta habilitar la colección <b>backups</b> en las reglas de Firestore (no afecta a tus datos). Agregá esta línea y publicá:</p>
-    <pre class="rules">match /backups/{id} { allow read, write: if true; }</pre>`;
+    <p class="muted" style="color:#ff9a9d">No se pudo acceder a la tabla <b>backups</b> en Supabase (no afecta a tus datos). Revisá que hayas ejecutado el SQL de <b>supabase/schema.sql</b>.</p>`;
   const list = backups.slice().sort((a,b)=> String(b.week||'').localeCompare(String(a.week||'')));
   const rows = list.map(b=>`<div class="assign-row">
       <span class="pname">${fmtDate(b.week)} <span class="muted">· ${(b.players||[]).length} jug · ${(b.matches||[]).length} part · ${b.kind==='manual'?'manual':'auto'}</span></span>
@@ -838,39 +873,17 @@ function renderCloudStatus(){
 }
 function openCloudHelp(){
   openModal(`
-    <h3>Cómo conectar la nube (Firebase)</h3>
+    <h3>Cómo conectar la nube (Supabase)</h3>
     <p class="muted">Se hace una sola vez. Después todos ven y cargan en tiempo real.</p>
     <ol class="muted" style="padding-left:18px;line-height:1.75">
-      <li>Entrá a <b>console.firebase.google.com</b> con tu cuenta de Google y creá un proyecto.</li>
-      <li>Menú <b>Compilación → Firestore Database</b> → Crear base de datos → <b>modo producción</b>.</li>
-      <li>Menú <b>Compilación → Authentication</b> → Comenzar → pestaña <b>Sign-in method</b> → habilitá <b>Google</b> y guardá.</li>
-      <li>Pestaña <b>Reglas</b> (en Firestore): pegá las reglas de abajo y tocá Publicar.</li>
-      <li>Engranaje ⚙ → <b>Configuración del proyecto</b> → "Tus apps" → app <b>Web (&lt;/&gt;)</b> → copiá el objeto <b>firebaseConfig</b>.</li>
-      <li>Pegalo en el campo de abajo y guardá. Listo.</li>
+      <li>Entrá a <b>supabase.com</b>, creá un proyecto y esperá a que termine de aprovisionar.</li>
+      <li>Abrí <b>SQL Editor</b>, pegá el contenido de <b>supabase/schema.sql</b> y ejecutalo.</li>
+      <li>En <b>Authentication → Providers</b> habilitá <b>Google</b> con tu Client ID y Secret de Google Cloud.</li>
+      <li>En <b>Authentication → URL Configuration</b> agregá la URL del sitio (GitHub Pages) como Redirect URL.</li>
+      <li>En <b>Project Settings → API</b> copiá la <b>Project URL</b> y la <b>anon public key</b>.</li>
+      <li>Pegá ambas acá abajo y guardá. Listo.</li>
     </ol>
-    <p class="muted">Reglas (cualquiera con el link puede leer, crear y editar; borrar partidos, borrar jugadores y editar partidos finalizados, solo el admin <b>${ADMIN_EMAIL}</b>; en un partido finalizado cualquiera puede agregar/quitar <b>comentarios</b>):</p>
-    <pre class="rules">rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    function isAdmin() {
-      return request.auth != null
-        && request.auth.token.email != null
-        && request.auth.token.email.lower() == '${ADMIN_EMAIL}';
-    }
-    match /players/{id} {
-      allow read, create, update: if true;
-      allow delete: if isAdmin();
-    }
-    match /matches/{id} {
-      allow read, create: if true;
-      allow update: if !resource.data.keys().hasAny(['closed'])
-        || resource.data.closed == false || isAdmin()
-        || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['comments']);
-      allow delete: if isAdmin();
-    }
-    match /backups/{id} { allow read, write: if true; }
-  }
-}</pre>
+    <p class="muted">La <b>anon key</b> es pública: la seguridad la dan las políticas RLS del SQL. Nunca pegues la <b>service_role key</b> en la app.</p>
     <p class="muted">Para entrar como admin: en <b>Jugadores</b> → tarjeta <b>Nube</b> → <b>Entrar como admin</b> con <b>${ADMIN_EMAIL}</b>. Los demás no necesitan cuenta.</p>
     <div class="modal-actions"><button class="btn primary" data-action="modal-close">Entendido</button></div>
   `);
@@ -1777,7 +1790,7 @@ function jugadoresHTML(){
     </div>
 
     <div class="card">
-      <h3>${DEMO?'Modo demo':'Nube (Firebase · datos compartidos)'}</h3>
+      <h3>${DEMO?'Modo demo':'Nube (Supabase · datos compartidos)'}</h3>
       ${DEMO
         ? `<p class="muted">Estás viendo una <b>demo</b> con jugadores y partidos de ejemplo. Podés probar todo: cargar jugadores, armar y <b>sortear equipos</b>, goles, ranking, escabio y comentarios.</p>
            <p class="muted">Los cambios quedan <b>solo en este dispositivo</b> y no afectan los datos reales del equipo.</p>
@@ -1793,8 +1806,8 @@ function jugadoresHTML(){
                 ${adminHTML()}`
              : `<p class="muted">Conectá la base de datos para que los datos los vea y cargue todo el equipo.</p>
                 <button class="btn ghost block" data-action="cloud-help" style="margin-bottom:12px">¿Cómo conecto?</button>
-                <label>Pegá acá tu <b>firebaseConfig</b>
-                  <textarea id="fb-config" rows="6" placeholder='{ "apiKey": "...", "projectId": "...", ... }' autocomplete="off"></textarea>
+                <label>Pegá acá la <b>URL</b> y la <b>anon key</b> de Supabase
+                  <textarea id="sb-config" rows="5" placeholder='{ "url": "https://xxxx.supabase.co", "anonKey": "eyJ..." }' autocomplete="off"></textarea>
                 </label>
                 <button class="btn primary block" data-action="cloud-save-config">Guardar y conectar</button>`}`}
     </div>
@@ -2151,15 +2164,12 @@ async function resetData(){
   }
   if(!confirm('Esto borra TODOS los jugadores y partidos (de este dispositivo y de la nube). ¿Seguro?')) return;
   if(!confirm('Última confirmación: se pierde todo. ¿Continuar?')) return;
+  if(fsReady() && !isAdmin){ alert('Solo el administrador ('+ADMIN_EMAIL+') puede borrar todos los datos de la nube.'); return; }
   data = { players:[], matches:[] }; currentMatchId=null; escabioMatchId=null; save();
   if(fsReady()){
     try{
-      const ps = await db.collection('players').get();
-      const ms = await db.collection('matches').get();
-      const batch = db.batch();
-      ps.forEach(d=> batch.delete(d.ref));
-      ms.forEach(d=> batch.delete(d.ref));
-      await batch.commit();
+      const { error } = await sb.rpc('restore_team_data', { p_players: [], p_matches: [] });
+      if(error) throw error;
     }catch(e){ cloudFail(e); }
   }
   render();
@@ -2383,7 +2393,7 @@ document.addEventListener('click', e=>{
     case 'export': exportData(); break;
     case 'import': importData(); break;
     case 'reset': resetData(); break;
-    case 'cloud-save-config': saveFbConfig(); break;
+    case 'cloud-save-config': saveSbConfig(); break;
     case 'cloud-help': openCloudHelp(); break;
     case 'toggle-sfx': toggleSfx(); break;
     case 'toggle-music': toggleHimno(); break;

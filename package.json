@@ -1,0 +1,15 @@
+{
+  "name": "piel-morena-fc",
+  "private": true,
+  "type": "module",
+  "description": "Migración de datos Firestore -> Supabase para Piel Morena FC",
+  "scripts": {
+    "migrate:export": "node scripts/migrate-firestore-to-supabase.mjs --export-only",
+    "migrate:import": "node scripts/migrate-firestore-to-supabase.mjs --import-only",
+    "migrate": "node scripts/migrate-firestore-to-supabase.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.119.0",
+    "firebase-admin": "^14.5.0"
+  }
+}
