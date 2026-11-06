@@ -481,9 +481,16 @@ let playerEditMode = false;
 
 /* ---------- Admin (solo este mail puede borrar partidos) ---------- */
 const ADMIN_EMAIL = 'leandroarmonelli@gmail.com';
+const ADMIN_GITHUB = 'learmonelli';
 let currentUser = null;
 let isAdmin = false;
-function isAdminEmail(u){ return !!(u && u.email && u.email.toLowerCase() === ADMIN_EMAIL); }
+function isAdminEmail(u){
+  if(!u) return false;
+  const email = (u.email || '').toLowerCase();
+  const meta = u.user_metadata || {};
+  const gh = String(meta.user_name || meta.preferred_username || '').toLowerCase();
+  return email === ADMIN_EMAIL || gh === ADMIN_GITHUB;
+}
 function canEditMatch(m){ return !!m && (!m.closed || isAdmin || DEMO); }
 
 function load(){
@@ -753,13 +760,13 @@ function persistComments(m){ if(fsReady()) return sb.rpc('set_match_comments', {
 function removeMatchDoc(id){ if(fsReady()) return sb.from('matches').delete().eq('id', id).then(({error})=>{ if(error) cloudFail(error); }); }
 function cloudFail(e){ try{ console.error('Supabase error:', e && e.message ? e.message : e); }catch(_){} cloudState = { status:'error', message:'Error: ' + (e && e.message ? e.message : e) }; renderCloudStatus(); }
 
-/* ---------- Sesión de administrador (Google vía Supabase Auth) ---------- */
+/* ---------- Sesión de administrador (GitHub vía Supabase Auth) ---------- */
 function adminLogin(){
   if(!cloudConfigured()){ alert('Primero conectá la nube.'); return; }
   ensureSupabase().then(()=>{
     if(!sb){ alert('No se pudo cargar Supabase.'); return; }
     sb.auth.signInWithOAuth({
-      provider:'google',
+      provider:'github',
       options:{ redirectTo: location.origin + location.pathname }
     }).then(({error})=>{ if(error) alert('No se pudo iniciar sesión: ' + (error.message || error)); });
   });
@@ -878,13 +885,14 @@ function openCloudHelp(){
     <ol class="muted" style="padding-left:18px;line-height:1.75">
       <li>Entrá a <b>supabase.com</b>, creá un proyecto y esperá a que termine de aprovisionar.</li>
       <li>Abrí <b>SQL Editor</b>, pegá el contenido de <b>supabase/schema.sql</b> y ejecutalo.</li>
-      <li>En <b>Authentication → Providers</b> habilitá <b>Google</b> con tu Client ID y Secret de Google Cloud.</li>
+      <li>Creá una <b>GitHub OAuth App</b> (github.com/settings/applications/new) con callback <code>https://TU-PROYECTO.supabase.co/auth/v1/callback</code>.</li>
+      <li>En <b>Authentication → Providers</b> habilitá <b>GitHub</b> con el Client ID y Secret de esa OAuth App.</li>
       <li>En <b>Authentication → URL Configuration</b> agregá la URL del sitio (GitHub Pages) como Redirect URL.</li>
       <li>En <b>Project Settings → API</b> copiá la <b>Project URL</b> y la <b>anon public key</b>.</li>
       <li>Pegá ambas acá abajo y guardá. Listo.</li>
     </ol>
     <p class="muted">La <b>anon key</b> es pública: la seguridad la dan las políticas RLS del SQL. Nunca pegues la <b>service_role key</b> en la app.</p>
-    <p class="muted">Para entrar como admin: en <b>Jugadores</b> → tarjeta <b>Nube</b> → <b>Entrar como admin</b> con <b>${ADMIN_EMAIL}</b>. Los demás no necesitan cuenta.</p>
+    <p class="muted">Para entrar como admin: en <b>Jugadores</b> → tarjeta <b>Nube</b> → <b>Entrar como admin</b> con la cuenta de GitHub <b>${ADMIN_GITHUB}</b>. Los demás no necesitan cuenta.</p>
     <div class="modal-actions"><button class="btn primary" data-action="modal-close">Entendido</button></div>
   `);
 }

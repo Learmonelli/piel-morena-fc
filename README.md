@@ -32,7 +32,7 @@ Aplicación web **mobile-first** para que un equipo amateur de fútbol 7 lleve l
 - **Post-partido**: registro de "escabio" por cantidad (stepper −/+) y **comentarios** por partido.
 - **Ficha de cada jugador**: totales + historial partido a partido.
 - **Finalizar partido**: al cerrar un partido sus datos quedan bloqueados para todos (solo el admin puede reabrirlo), pero se pueden seguir agregando **comentarios**. Además, los partidos se finalizan **automáticamente al día siguiente** de su fecha.
-- **Admin**: borrar partidos, borrar jugadores y reabrir partidos finalizados queda restringido al administrador (`leandroarmonelli@gmail.com`), que entra con Google. El resto del equipo sigue sin registrarse (puede crear y editar).
+- **Admin**: borrar partidos, borrar jugadores y reabrir partidos finalizados queda restringido al administrador, que entra con GitHub (`Learmonelli`). El resto del equipo sigue sin registrarse (puede crear y editar).
 - **Datos en tiempo real**: todo se guarda en la nube (Supabase / Postgres + Realtime) y se sincroniza al instante entre dispositivos.
 - **Tema "Cancha arcade"**: fondo de cancha pixelada, tipografías retro y paneles vinotinto.
 - **Audio 8-bit generado con Web Audio API**: efectos (gol, figura) y un **himno original** en loop.
@@ -46,7 +46,7 @@ Aplicación web **mobile-first** para que un equipo amateur de fútbol 7 lleve l
 |---|---|
 | Frontend | HTML, CSS y JavaScript **vanilla** (un único `index.html`, sin build) |
 | Base de datos | **Supabase** (Postgres + Realtime, `@supabase/supabase-js` v2) |
-| Autenticación | **Supabase Auth** con Google (solo para el admin) |
+| Autenticación | **Supabase Auth** con GitHub (solo para el admin) |
 | Audio | **Web Audio API** (síntesis de sonido y música por código) |
 | Gráficos | SVG generado en runtime (avatares pixel art) |
 | Hosting | **GitHub Pages** |
@@ -127,10 +127,11 @@ Políticas RLS equivalentes (en `supabase/schema.sql`): lectura, alta y edición
 
 1. Crear un proyecto en [supabase.com](https://supabase.com/) y esperar a que termine el aprovisionamiento.
 2. Abrir **SQL Editor**, pegar el contenido de `supabase/schema.sql` y ejecutarlo (crea tablas, RLS, triggers, RPCs y publica las tablas en Realtime).
-3. En **Authentication → Providers** habilitar **Google** con un Client ID/Secret de Google Cloud.
-4. En **Authentication → URL Configuration** agregar la URL de GitHub Pages como Redirect URL.
-5. En **Project Settings → API** copiar la **Project URL** y la **anon public key**.
-6. Pegar ambas en la constante `DEFAULT_SB_CONFIG` de `index.html` (o conectarlas desde la sección **Nube** de la app) y publicar.
+3. Crear una **GitHub OAuth App** en [github.com/settings/applications/new](https://github.com/settings/applications/new) con callback `https://<PROJECT_REF>.supabase.co/auth/v1/callback`.
+4. En **Authentication → Providers** habilitar **GitHub** con el Client ID/Secret de esa OAuth App.
+5. En **Authentication → URL Configuration** agregar la URL de GitHub Pages como Redirect URL.
+6. En **Project Settings → API** copiar la **Project URL** y la **anon public key**.
+7. Pegar ambas en la constante `DEFAULT_SB_CONFIG` de `index.html` (o conectarlas desde la sección **Nube** de la app) y publicar.
 
 > La `anon key` es pública por diseño; la seguridad se controla con las políticas RLS. **Nunca** poner la `service_role key` en el frontend.
 

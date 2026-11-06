@@ -72,7 +72,9 @@ returns boolean
 language sql
 stable
 as $$
-  select coalesce(auth.jwt() ->> 'email', '') = 'leandroarmonelli@gmail.com';
+  select coalesce(auth.jwt() ->> 'email', '') = 'leandroarmonelli@gmail.com'
+      or lower(coalesce(auth.jwt() -> 'user_metadata' ->> 'user_name', '')) = 'learmonelli'
+      or lower(coalesce(auth.jwt() -> 'user_metadata' ->> 'preferred_username', '')) = 'learmonelli';
 $$;
 
 -- Un partido finalizado (data->>'closed' = true) solo puede ser
