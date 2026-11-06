@@ -36,7 +36,7 @@ Aplicación web **mobile-first** para que un equipo amateur de fútbol 7 lleve l
 - **Datos en tiempo real**: todo se guarda en la nube (Supabase / Postgres + Realtime) y se sincroniza al instante entre dispositivos.
 - **Tema "Cancha arcade"**: fondo de cancha pixelada, tipografías retro y paneles vinotinto.
 - **Audio 8-bit generado con Web Audio API**: efectos (gol, figura) y un **himno original** en loop.
-- **Copias de seguridad**: exportar/importar JSON y **backup automático semanal en la nube** (tabla `backups`, se conservan las últimas 8 semanas, con descargar/restaurar).
+- **Copias de seguridad**: exportar/importar JSON y **backup automático semanal en la nube** (tabla `backups`, se conservan las últimas 8 semanas, con descargar/restaurar). Además, `supabase/weekly-backup.sql` programa un backup del lado del servidor con `pg_cron`, independiente de que alguien abra la app.
 
 ---
 
@@ -149,6 +149,10 @@ npm run migrate
 
 Usar `npm run migrate:export` para solo exportar a `migration/firestore-export.json` (ignorado por git) y `npm run migrate:import` para importar ese archivo. El service account JSON no debe subirse al repositorio.
 
+### Backup automático semanal (servidor)
+
+El backup de la app se genera al abrirla. Para que no dependa de eso, ejecutar `supabase/weekly-backup.sql` en el **SQL Editor** con `pg_cron` habilitado (**Database → Extensions → pg_cron**). El job corre todos los **miércoles 03:00 UTC** (00:00 Argentina), guarda la copia en `backups` y conserva las últimas 8 semanas.
+
 ---
 
 ## 📁 Estructura
@@ -157,6 +161,7 @@ Usar `npm run migrate:export` para solo exportar a `migration/firestore-export.j
 .
 ├── index.html                        # SPA completa: estilos, lógica, SVG y audio
 ├── supabase/schema.sql               # Tablas, RLS, triggers, RPCs y Realtime
+├── supabase/weekly-backup.sql        # Backup semanal automático (pg_cron)
 └── scripts/migrate-firestore-to-supabase.mjs  # Export/import de datos
 ```
 
